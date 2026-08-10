@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Devil Connection Web Shell</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./js/asar.js"></script>
+    <script defer src="./js/vfs-runtime.js"></script>
+    <script defer src="./js/compat.js"></script>
+    <script defer src="./js/app.js"></script>
+  </head>
+  <body>
+    <main id="loader-view" class="loader-view">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">LOCAL ASAR PLAYER</p>
+          <h1>Devil Connection</h1>
+        </div>
+        <span class="privacy-state">Local only</span>
+      </header>
+
+      <section class="mount-workspace" aria-labelledby="mount-title">
+        <div class="workspace-copy">
+          <h2 id="mount-title">挂载游戏</h2>
+          <p id="mount-status" class="status-copy" aria-live="polite">
+            等待选择 app.asar
+          </p>
+        </div>
+
+        <button id="file-drop" class="file-drop" type="button">
+          <span class="file-mark" aria-hidden="true">ASAR</span>
+          <span class="file-action">选择 app.asar</span>
+          <span class="file-meta">文件只在当前浏览器页面中读取</span>
+        </button>
+        <input
+          id="asar-input"
+          class="visually-hidden"
+          type="file"
+          accept=".asar,application/octet-stream"
+        />
+
+        <div id="progress-row" class="progress-row" hidden>
+          <div class="progress-track" aria-hidden="true">
+            <span id="progress-fill"></span>
+          </div>
+          <span id="progress-label">0%</span>
+        </div>
+
+        <details id="error-details" class="error-details" hidden>
+          <summary>加载详情</summary>
+          <pre id="error-output"></pre>
+        </details>
+      </section>
+    </main>
+
+    <section id="player-view" class="player-view" hidden>
+      <header class="player-bar">
+        <div class="player-identity">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span id="mounted-file">app.asar</span>
+        </div>
+        <div class="player-actions">
+          <button id="reload-game" type="button">重新载入</button>
+          <button id="close-game" type="button">退出游戏</button>
+        </div>
+      </header>
+      <iframe
+        id="game-frame"
+        title="Devil Connection"
+        allow="autoplay; fullscreen"
+        allowfullscreen
+      ></iframe>
+    </section>
+  </body>
+</html>
+
