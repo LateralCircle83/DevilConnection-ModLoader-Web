@@ -286,15 +286,41 @@
 
     var source = await this.readText(apngWorkerPath)
     var callbackStart = 'return new APNG().load(blob).then(([frames, iterations]) => {'
+    var callbackCount = source.split(callbackStart).length - 1
+    if (callbackCount !== 2) {
+      throw new Error('The APNG result compatibility patch no longer matches this game version')
+    }
     var guardedStart = [
       'return new APNG().load(blob).then(result => {',
       '    if (!result) return { frames: [], images: [], delays: [] }',
       '    const [frames, iterations] = result',
     ].join('\n')
     var patched = source.split(callbackStart).join(guardedStart)
-    if (patched === source) {
-      throw new Error('The APNG browser compatibility patch no longer matches this game version')
+
+    var byteViewStart = 'const bytes = new Uint8Array(blob.buffer)'
+    if (patched.indexOf(byteViewStart) === -1) {
+      throw new Error('The APNG binary compatibility patch no longer matches this game version')
     }
+    patched = patched.replace(byteViewStart, [
+      '// Electron passes a Buffer here; browser mode passes an ArrayBuffer.',
+      '      const bytes = ArrayBuffer.isView(blob)',
+      '        ? new Uint8Array(blob.buffer, blob.byteOffset, blob.byteLength)',
+      '        : new Uint8Array(blob)',
+    ].join('\n'))
+
+    var playerStart = 'function playAPNG(apng, canvas, x, y, w, h, reversed, onFinish, onTick) {'
+    var playerStartIndex = patched.indexOf(playerStart)
+    if (playerStartIndex === -1) {
+      throw new Error('The APNG playback compatibility patch no longer matches this game version')
+    }
+    var playerBodyIndex = playerStartIndex + playerStart.length
+    patched = patched.slice(0, playerBodyIndex) + [
+      '',
+      '  if (!apng || !apng.images || apng.images.length === 0) {',
+      '    if (onFinish) onFinish()',
+      '    return',
+      '  }',
+    ].join('\n') + patched.slice(playerBodyIndex)
 
     var url = URL.createObjectURL(new Blob([patched], { type: mimeForPath(apngWorkerPath) }))
     this.preparedUrls.set(apngWorkerPath, url)
