@@ -454,23 +454,25 @@
     }
 
     function rewriteNode(node) {
-      if (!node || node.nodeType !== 1) return node
-      var attributes = URL_ATTRIBUTES[node.tagName] || []
-      attributes.forEach(function (name) {
-        if (node.hasAttribute(name)) {
-          var value = node.getAttribute(name)
-          var replacement = resolve(value)
-          if (replacement !== value) nativeSetAttribute.call(node, name, replacement)
+      if (!node || (node.nodeType !== 1 && node.nodeType !== 11)) return node
+      if (node.nodeType === 1) {
+        var attributes = URL_ATTRIBUTES[node.tagName] || []
+        attributes.forEach(function (name) {
+          if (node.hasAttribute(name)) {
+            var value = node.getAttribute(name)
+            var replacement = resolve(value)
+            if (replacement !== value) nativeSetAttribute.call(node, name, replacement)
+          }
+        })
+        if (node.hasAttribute('style')) {
+          nativeSetAttribute.call(node, 'style', rewriteCssValue(node.getAttribute('style'), resolve))
         }
-      })
-      if (node.hasAttribute('style')) {
-        nativeSetAttribute.call(node, 'style', rewriteCssValue(node.getAttribute('style'), resolve))
-      }
-      if (node.tagName === 'STYLE' && node.textContent) {
-        node.textContent = rewriteCssValue(node.textContent, resolve)
+        if (node.tagName === 'STYLE' && node.textContent) {
+          node.textContent = rewriteCssValue(node.textContent, resolve)
+        }
       }
       if (node.querySelectorAll) {
-        node.querySelectorAll('img,video,audio,source,script,link,input,track,object,embed,style').forEach(rewriteNode)
+        node.querySelectorAll('[style],img,video,audio,source,script,link,input,track,object,embed,style').forEach(rewriteNode)
       }
       return node
     }

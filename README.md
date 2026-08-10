@@ -12,7 +12,7 @@ Current scope:
 
 - Original `app.asar` only
 - Read-only ASAR parsing
-- Browser storage for saves
+- IndexedDB-backed browser storage for saves
 - Browser replacements for Electron and Steam calls
 - No Mod ASAR overlay yet
 

@@ -7,6 +7,16 @@
     var VERSION = 1
     var LOCAL_PREFIX = 'dc-shell:'
 
+    function reportStorageError(error) {
+      var message = String(error && error.message || error || 'Unknown storage error')
+      target.console.error('[DC storage]', error)
+      var root = target.document && target.document.documentElement
+      if (root) root.setAttribute('data-dc-storage-error', message.slice(0, 500))
+      try {
+        target.dispatchEvent(new target.CustomEvent('dc-storage-error', { detail: { message: message } }))
+      } catch (dispatchError) {}
+    }
+
     function safeLocalGet(key) {
       try { return target.localStorage.getItem(LOCAL_PREFIX + key) } catch (error) { return null }
     }
@@ -19,6 +29,24 @@
       try { target.localStorage.removeItem(LOCAL_PREFIX + key) } catch (error) {}
     }
 
+    function readLocalEntries() {
+      var entries = {}
+      try {
+        for (var index = 0; index < target.localStorage.length; index++) {
+          var storageKey = target.localStorage.key(index)
+          if (!storageKey || storageKey.indexOf(LOCAL_PREFIX) !== 0) continue
+          var key = storageKey.slice(LOCAL_PREFIX.length)
+          var value = target.localStorage.getItem(storageKey)
+          if (value !== null) entries[key] = value
+        }
+      } catch (error) {}
+      return entries
+    }
+
+    function clearLocalEntries(entries) {
+      Object.keys(entries || readLocalEntries()).forEach(safeLocalRemove)
+    }
+
     var storage = {
       cache: {},
       pending: {},
@@ -27,11 +55,57 @@
       flushTimer: null,
       useIndexedDB: Boolean(target.indexedDB),
 
+      loadLocalFallback: function () {
+        var entries = readLocalEntries()
+        var that = this
+        Object.keys(entries).forEach(function (key) {
+          if (!Object.prototype.hasOwnProperty.call(that.cache, key)) that.cache[key] = entries[key]
+        })
+      },
+
+      migrateLocalFallback: function () {
+        var entries = readLocalEntries()
+        var keys = Object.keys(entries)
+        if (!keys.length || !this.db) return Promise.resolve()
+
+        var that = this
+        var missingKeys = keys.filter(function (key) {
+          return !Object.prototype.hasOwnProperty.call(that.cache, key)
+        })
+        missingKeys.forEach(function (key) { that.cache[key] = entries[key] })
+
+        if (!missingKeys.length) {
+          clearLocalEntries(entries)
+          return Promise.resolve()
+        }
+
+        return new Promise(function (resolve, reject) {
+          var transaction = that.db.transaction(STORE_NAME, 'readwrite')
+          var store = transaction.objectStore(STORE_NAME)
+          missingKeys.forEach(function (key) { store.put(entries[key], key) })
+          var settled = false
+          function fail() {
+            if (settled) return
+            settled = true
+            reject(transaction.error || new Error('Failed to migrate local save data to IndexedDB'))
+          }
+          transaction.oncomplete = function () {
+            if (settled) return
+            settled = true
+            clearLocalEntries(entries)
+            resolve()
+          }
+          transaction.onerror = fail
+          transaction.onabort = fail
+        })
+      },
+
       init: function () {
         if (this.ready) return this.ready
         var that = this
         this.ready = new Promise(function (resolve) {
           if (!that.useIndexedDB) {
+            that.loadLocalFallback()
             resolve(false)
             return
           }
@@ -41,6 +115,8 @@
             request = target.indexedDB.open(DB_NAME, VERSION)
           } catch (error) {
             that.useIndexedDB = false
+            that.loadLocalFallback()
+            reportStorageError(error)
             resolve(false)
             return
           }
@@ -51,6 +127,8 @@
           }
           request.onerror = function () {
             that.useIndexedDB = false
+            that.loadLocalFallback()
+            reportStorageError(request.error || new Error('IndexedDB could not be opened'))
             resolve(false)
           }
           request.onsuccess = function () {
@@ -66,9 +144,19 @@
                 cursor.continue()
               }
             }
-            transaction.oncomplete = function () { resolve(true) }
+            transaction.oncomplete = function () {
+              that.migrateLocalFallback().then(
+                function () { resolve(true) },
+                function (error) {
+                  reportStorageError(error)
+                  resolve(true)
+                },
+              )
+            }
             transaction.onerror = function () {
               that.useIndexedDB = false
+              that.loadLocalFallback()
+              reportStorageError(transaction.error || new Error('IndexedDB saves could not be read'))
               resolve(false)
             }
           }
@@ -84,27 +172,41 @@
 
       setItem: function (key, value) {
         this.cache[key] = String(value)
-        this.pending[key] = true
-        safeLocalSet(key, String(value))
-        this.scheduleFlush()
+        if (this.useIndexedDB) {
+          this.pending[key] = true
+          this.scheduleFlush()
+        } else safeLocalSet(key, String(value))
       },
 
       removeItem: function (key) {
         delete this.cache[key]
-        this.pending[key] = true
-        safeLocalRemove(key)
-        this.scheduleFlush()
+        if (this.useIndexedDB) {
+          this.pending[key] = true
+          this.scheduleFlush()
+        } else safeLocalRemove(key)
       },
 
       clear: function () {
-        var keys = Object.keys(this.cache)
+        var previousCache = this.cache
         this.cache = {}
         this.pending = {}
-        keys.forEach(safeLocalRemove)
+        clearLocalEntries()
         var that = this
-        this.ready.then(function () {
+        return this.ready.then(function () {
           if (!that.useIndexedDB || !that.db) return
-          that.db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).clear()
+          return new Promise(function (resolve, reject) {
+            var transaction = that.db.transaction(STORE_NAME, 'readwrite')
+            transaction.objectStore(STORE_NAME).clear()
+            transaction.oncomplete = function () { resolve() }
+            transaction.onerror = function () {
+              reject(transaction.error || new Error('IndexedDB saves could not be cleared'))
+            }
+          })
+        }).catch(function (error) {
+          Object.keys(previousCache).forEach(function (key) {
+            if (!Object.prototype.hasOwnProperty.call(that.cache, key)) that.cache[key] = previousCache[key]
+          })
+          reportStorageError(error)
         })
       },
 
@@ -113,7 +215,7 @@
         var that = this
         this.flushTimer = target.setTimeout(function () {
           that.flushTimer = null
-          that.flush()
+          that.flush().catch(function () {})
         }, 60)
       },
 
@@ -123,25 +225,48 @@
         this.pending = {}
         if (!keys.length) return Promise.resolve()
         return this.ready.then(function () {
-          if (!that.useIndexedDB || !that.db) return
-          return new Promise(function (resolve) {
+          if (!that.useIndexedDB || !that.db) {
+            keys.forEach(function (key) {
+              if (Object.prototype.hasOwnProperty.call(that.cache, key)) safeLocalSet(key, that.cache[key])
+              else safeLocalRemove(key)
+            })
+            return
+          }
+          return new Promise(function (resolve, reject) {
             var transaction = that.db.transaction(STORE_NAME, 'readwrite')
             var store = transaction.objectStore(STORE_NAME)
             keys.forEach(function (key) {
               if (Object.prototype.hasOwnProperty.call(that.cache, key)) store.put(that.cache[key], key)
               else store.delete(key)
             })
-            transaction.oncomplete = function () { resolve() }
-            transaction.onerror = function () { resolve() }
+            var settled = false
+            function fail() {
+              if (settled) return
+              settled = true
+              reject(transaction.error || new Error('IndexedDB save transaction failed'))
+            }
+            transaction.oncomplete = function () {
+              if (settled) return
+              settled = true
+              var root = target.document && target.document.documentElement
+              if (root) root.removeAttribute('data-dc-storage-error')
+              resolve()
+            }
+            transaction.onerror = fail
+            transaction.onabort = fail
           })
+        }).catch(function (error) {
+          keys.forEach(function (key) { that.pending[key] = true })
+          reportStorageError(error)
+          throw error
         })
       },
     }
 
     storage.init()
-    target.addEventListener('pagehide', function () { storage.flush() })
+    target.addEventListener('pagehide', function () { storage.flush().catch(function () {}) })
     target.document.addEventListener('visibilitychange', function () {
-      if (target.document.visibilityState === 'hidden') storage.flush()
+      if (target.document.visibilityState === 'hidden') storage.flush().catch(function () {})
     })
     return storage
   }
@@ -288,12 +413,30 @@
     return api
   }
 
-  function installStorageAdapters(target, $) {
+  function installStorageAdapters(target, $, vfs) {
     var api = target.api
     var storage = api.storage
 
+    function serialize(value) {
+      var restoredUrlCount = 0
+      var serialized = JSON.stringify(value, function (key, item) {
+        if (typeof item !== 'string') return item
+        var restored = vfs.restoreObjectUrls(item)
+        if (restored !== item) {
+          restoredUrlCount += (item.match(/blob:/g) || []).length - (restored.match(/blob:/g) || []).length
+        }
+        return restored
+      })
+      var root = target.document && target.document.documentElement
+      if (root) {
+        root.setAttribute('data-dc-save-restored-urls', String(restoredUrlCount))
+        root.setAttribute('data-dc-save-unmapped-urls', String((serialized.match(/blob:/g) || []).length))
+      }
+      return serialized
+    }
+
     $.setStorageWeb = function (key, value) {
-      storage.setItem(key, encodeURIComponent(JSON.stringify(value)))
+      storage.setItem(key, encodeURIComponent(serialize(value)))
     }
 
     $.getStorageWeb = function (key) {
@@ -303,7 +446,7 @@
     }
 
     $.setStorageCompress = function (key, value) {
-      var encoded = encodeURIComponent(JSON.stringify(value))
+      var encoded = encodeURIComponent(serialize(value))
       storage.setItem(key, target.LZString ? target.LZString.compress(encoded) : encoded)
     }
 
@@ -473,7 +616,7 @@
     global.DCVfsRuntime.installJQuery(target)
     target.TYRANO.cache_text = true
     target.TYRANO.resource_concurrency = 6
-    installStorageAdapters(target, $)
+    installStorageAdapters(target, $, vfs)
     installKagAdapters(target, $, vfs)
 
     var originalInit = target.TYRANO.init

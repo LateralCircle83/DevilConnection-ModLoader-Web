@@ -147,6 +147,7 @@
     this.lowercasePaths = new Map()
     this.objectUrls = new Map()
     this.preparedUrls = new Map()
+    this.pathsByObjectUrl = new Map()
 
     entries.forEach(
       function (_, path) {
@@ -250,7 +251,16 @@
     var blob = this.getBlob(path)
     var url = URL.createObjectURL(blob)
     this.objectUrls.set(path, url)
+    this.pathsByObjectUrl.set(url, path)
     return url
+  }
+
+  AsarArchive.prototype.restoreObjectUrls = function (value) {
+    if (typeof value !== 'string' || value.indexOf('blob:') === -1) return value
+    var archive = this
+    return value.replace(/blob:[^\s"'()<>]+/g, function (url) {
+      return archive.pathsByObjectUrl.get(url) || url
+    })
   }
 
   AsarArchive.prototype.rewriteCss = function (cssText, cssPath) {
@@ -274,6 +284,7 @@
       var rewritten = this.rewriteCss(css, path)
       var url = URL.createObjectURL(new Blob([rewritten], { type: mimeForPath(path) }))
       this.preparedUrls.set(path, url)
+      this.pathsByObjectUrl.set(url, path)
       if (onProgress) onProgress(index + 1, paths.length, path)
       if ((index + 1) % 4 === 0) await new Promise(function (resolve) { setTimeout(resolve, 0) })
     }
@@ -324,6 +335,7 @@
 
     var url = URL.createObjectURL(new Blob([patched], { type: mimeForPath(apngWorkerPath) }))
     this.preparedUrls.set(apngWorkerPath, url)
+    this.pathsByObjectUrl.set(url, apngWorkerPath)
     return this
   }
 
@@ -339,6 +351,7 @@
     this.preparedUrls.forEach(function (url) { URL.revokeObjectURL(url) })
     this.objectUrls.clear()
     this.preparedUrls.clear()
+    this.pathsByObjectUrl.clear()
   }
 
   global.DCAsar = {
