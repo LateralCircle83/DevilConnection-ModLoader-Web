@@ -3,7 +3,7 @@
 
   var DCWeb = global.DCWeb
 
-  function install(target, vfs) {
+  function install(target, vfs, launchToken) {
     if (target.api && target.api.__dcBrowserApi) return target.api
 
     var storage = DCWeb.BrowserSaveStore.create(target)
@@ -114,7 +114,9 @@
         if (element.requestFullscreen) await element.requestFullscreen()
       },
 
-      quit: async function () { target.parent.postMessage({ type: 'dc-player-quit' }, '*') },
+      quit: async function () {
+        target.parent.postMessage({ type: 'dc-player-quit', launchToken: launchToken }, '*')
+      },
       applyPatch: async function () { return false },
       openWebPage: async function (url) { target.open(url, '_blank', 'noopener') },
       readSubDir: async function () { return [] },

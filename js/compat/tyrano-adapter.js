@@ -88,45 +88,6 @@
     }
   }
 
-  function createStartOverlay(target, start) {
-    var overlay = target.document.createElement('button')
-    overlay.type = 'button'
-    overlay.id = 'dc-browser-start'
-    overlay.innerHTML = '<span>点击开始</span><small>CLICK TO START</small>'
-    overlay.style.cssText = [
-      'position:fixed',
-      'inset:0',
-      'z-index:2147483647',
-      'display:flex',
-      'flex-direction:column',
-      'align-items:center',
-      'justify-content:center',
-      'gap:10px',
-      'width:100%',
-      'height:100%',
-      'border:0',
-      'border-radius:0',
-      'color:#fff',
-      'background:#111411',
-      'font:700 32px/1.2 "Segoe UI","Microsoft YaHei",sans-serif',
-      'letter-spacing:0',
-      'cursor:pointer',
-    ].join(';')
-    overlay.querySelector('small').style.cssText = 'font:600 11px/1.2 Consolas,monospace;color:#9fb0a5;letter-spacing:0'
-    overlay.addEventListener('click', function () {
-      overlay.disabled = true
-      overlay.querySelector('span').textContent = '正在启动'
-      start().catch(function (error) {
-        overlay.disabled = false
-        overlay.querySelector('span').textContent = '启动失败，点击重试'
-        target.console.error(error)
-        target.parent.postMessage({ type: 'dc-player-error', message: error.message, stack: error.stack }, '*')
-      })
-    })
-    target.document.body.appendChild(overlay)
-    return overlay
-  }
-
   function unlockAudio(target, vfs) {
     try {
       var silentPath = 'tyrano/audio/silent.mp3'
@@ -169,7 +130,7 @@
     }, 250)
   }
 
-  function install(target, vfs) {
+  function install(target, vfs, launchId, launchToken) {
     if (target.__dcTyranoCompatInstalled) return
     var $ = target.jQuery
     if (!$ || !target.TYRANO || !target.tyrano || !target.tyrano.plugin.kag) {
@@ -182,23 +143,59 @@
     DCWeb.TyranoSaveAdapter.install(target, $, vfs)
     installKagAdapters(target, $, vfs)
 
+    var root = target.document && target.document.documentElement
+    if (root) root.setAttribute('data-dc-launch-id', String(launchId))
+
     var originalInit = target.TYRANO.init
     var started = false
-    target.TYRANO.init = function () {
-      if (started || target.document.getElementById('dc-browser-start')) return
-      createStartOverlay(target, async function () {
-        if (started) return
-        started = true
-        unlockAudio(target, vfs)
-        try {
-          target.TYRANO.kag.readyAudio()
-          target.TYRANO.kag.tmp.ready_audio = true
-        } catch (error) {}
-        await target.api.storage.ready
-        var overlay = target.document.getElementById('dc-browser-start')
-        if (overlay) overlay.remove()
-        originalInit.call(target.TYRANO)
+    var startPromise = null
+    var readyPosted = false
+    var readyPromise = null
+    var modRuntimeReady = target.__dcModRuntimeReady || Promise.resolve()
+
+    function startGame() {
+      if (started) return startPromise
+      started = true
+      if (root) root.setAttribute('data-dc-start-gate', 'starting')
+      unlockAudio(target, vfs)
+      try {
+        target.TYRANO.kag.readyAudio()
+        target.TYRANO.kag.tmp.ready_audio = true
+      } catch (error) {}
+      target.parent.postMessage({ type: 'dc-player-started', launchId: launchId, launchToken: launchToken }, '*')
+      var storageReady = Promise.resolve(target.api.storage.ready).catch(function (error) {
+        target.console.warn('Browser storage initialization failed; continuing with fallback storage', error)
       })
+      startPromise = Promise.all([storageReady, modRuntimeReady]).then(function () {
+        return new Promise(function (resolve) { target.requestAnimationFrame(resolve) })
+      }).then(function () {
+        if (root) root.setAttribute('data-dc-start-gate', 'started')
+        return originalInit.call(target.TYRANO)
+      }).catch(function (error) {
+        target.console.error(error)
+        target.parent.postMessage({
+          type: 'dc-player-error',
+          launchToken: launchToken,
+          message: error.message,
+          stack: error.stack,
+        }, '*')
+        throw error
+      })
+      return startPromise
+    }
+
+    target.__dcStartGame = startGame
+    target.TYRANO.init = function () {
+      if (started) return startPromise
+      if (readyPromise) return readyPromise
+      readyPromise = Promise.resolve(modRuntimeReady).then(function () {
+        if (started || readyPosted) return null
+        readyPosted = true
+        if (root) root.setAttribute('data-dc-start-gate', 'ready')
+        target.parent.postMessage({ type: 'dc-player-ready', launchId: launchId, launchToken: launchToken }, '*')
+        return null
+      })
+      return readyPromise
     }
 
     target.__dcTyranoCompatInstalled = true

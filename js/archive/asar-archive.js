@@ -6,6 +6,10 @@
   var MAX_HEADER_BYTES = 64 * 1024 * 1024
   var decoder = new TextDecoder('utf-8')
 
+  function align4(value) {
+    return value + ((4 - (value % 4)) % 4)
+  }
+
   function asSafeInteger(value, name) {
     var number = Number(value)
     if (!Number.isSafeInteger(number) || number < 0) {
@@ -51,7 +55,7 @@
   }
 
   AsarArchive.open = async function (file) {
-    if (!file || typeof file.slice !== 'function') throw new TypeError('A local app.asar file is required')
+    if (!file || typeof file.slice !== 'function') throw new TypeError('A local ASAR file is required')
     if (file.size < 16) throw new Error('The selected file is too small to be an ASAR archive')
 
     var view = new DataView(await file.slice(0, 16).arrayBuffer())
@@ -59,7 +63,7 @@
     var headerSize = view.getUint32(4, true)
     var headerPayloadSize = view.getUint32(8, true)
     var jsonSize = view.getUint32(12, true)
-    if (marker !== 4 || headerPayloadSize + 4 !== headerSize) {
+    if (marker !== 4) {
       throw new Error('The selected file does not have a supported Electron ASAR header')
     }
     if (!jsonSize || jsonSize > MAX_HEADER_BYTES || 16 + jsonSize > file.size) {
@@ -74,9 +78,15 @@
     }
     if (!header || !header.files) throw new Error('The ASAR archive has no file index')
 
+    var standardDataOffset = 8 + headerSize
+    var legacyDataOffset = 16 + align4(jsonSize)
+    var dataOffset = 0
+    if (headerPayloadSize + 4 === headerSize) dataOffset = standardDataOffset
+    else if (headerSize === legacyDataOffset) dataOffset = legacyDataOffset
+    else throw new Error('The selected file does not have a supported Electron ASAR header layout')
+
     var entries = new Map()
     walkHeader(header.files, '', entries)
-    var dataOffset = 8 + headerSize
     if (dataOffset > file.size) throw new Error('The ASAR data offset is outside the file')
     return new AsarArchive(file, header, dataOffset, entries)
   }

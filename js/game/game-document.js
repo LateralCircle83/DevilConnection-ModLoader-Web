@@ -19,14 +19,23 @@
     var doc = new DOMParser().parseFromString(source, 'text/html')
     if (!doc.documentElement || doc.querySelector('parsererror')) throw new Error('游戏 index.html 无法解析')
 
+    var gateStyle = doc.createElement('style')
+    gateStyle.textContent = [
+      'html:not([data-dc-start-gate="started"]),',
+      'html:not([data-dc-start-gate="started"]) body { background: transparent !important; }',
+      'html:not([data-dc-start-gate="started"]) body > * { visibility: hidden !important; }',
+    ].join('\n')
+    doc.head.insertBefore(gateStyle, doc.head.firstChild)
+
     var bootstrap = inlineScript(doc, [
       ';(function () {',
       '  var vfs = parent.__dcActiveResolver',
+      '  var launchToken = parent.__dcActiveLaunchToken',
       '  if (!vfs) throw new Error("ASAR mount is not available")',
       '  parent.DCWeb.Runtime.install(window, vfs)',
-      '  parent.DCWeb.BrowserApi.install(window, vfs)',
+      '  parent.DCWeb.BrowserApi.install(window, vfs, launchToken)',
       '  window.addEventListener("error", function (event) {',
-      '    parent.postMessage({ type: "dc-player-error", message: event.message, stack: event.error && event.error.stack }, "*")',
+      '    parent.postMessage({ type: "dc-player-error", launchToken: launchToken, message: event.message, stack: event.error && event.error.stack }, "*")',
       '  })',
       '})()',
     ].join('\n'))
@@ -37,7 +46,10 @@
       var normalized = DCWeb.ResourcePath.normalize(sourcePath)
       if (normalized === 'electron_latest.js') {
         script.removeAttribute('src')
-        script.textContent = 'parent.DCWeb.TyranoAdapter.install(window, parent.__dcActiveResolver)'
+        script.textContent = [
+          'parent.DCWeb.ModRuntime.install(window, parent.__dcActiveModPlan, parent.__dcActiveResolver)',
+          'parent.DCWeb.TyranoAdapter.install(window, parent.__dcActiveResolver, parent.__dcActiveLaunchId, parent.__dcActiveLaunchToken)',
+        ].join(';')
         return
       }
       if (resolver.has(sourcePath)) script.setAttribute('src', resolver.getObjectUrl(sourcePath))
@@ -60,6 +72,7 @@
     })
 
     doc.documentElement.setAttribute('data-dc-asar-player', 'true')
+    doc.documentElement.setAttribute('data-dc-start-gate', 'loading')
     return '<!doctype html>\n' + doc.documentElement.outerHTML
   }
 

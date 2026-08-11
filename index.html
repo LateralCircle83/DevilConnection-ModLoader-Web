@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
     <title>Devil Connection Web Shell</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260811b" />
     <script defer src="./js/core/namespace.js"></script>
     <script defer src="./js/core/resource-path.js"></script>
     <script defer src="./js/archive/asar-archive.js"></script>
@@ -13,59 +13,166 @@
     <script defer src="./js/assets/object-url-registry.js"></script>
     <script defer src="./js/assets/style-processor.js"></script>
     <script defer src="./js/assets/asset-resolver.js"></script>
+    <script defer src="./js/mods/mod-package.js"></script>
+    <script defer src="./js/mods/mod-plan.js"></script>
     <script defer src="./js/runtime/resource-rewriter.js"></script>
     <script defer src="./js/runtime/browser-runtime.js"></script>
     <script defer src="./js/storage/browser-save-store.js"></script>
-    <script defer src="./js/compat/browser-api.js"></script>
+    <script defer src="./js/compat/browser-api.js?v=20260811b"></script>
     <script defer src="./js/compat/tyrano-save-adapter.js"></script>
-    <script defer src="./js/compat/tyrano-adapter.js"></script>
+    <script defer src="./js/mods/mod-runtime.js?v=20260811c"></script>
+    <script defer src="./js/compat/tyrano-adapter.js?v=20260811c"></script>
     <script defer src="./js/game/devil-connection-profile.js"></script>
-    <script defer src="./js/game/game-document.js"></script>
-    <script defer src="./js/ui/shell-view.js"></script>
-    <script defer src="./js/player/player-controller.js"></script>
+    <script defer src="./js/game/game-document.js?v=20260811b"></script>
+    <script defer src="./js/ui/shell-view.js?v=20260811b"></script>
+    <script defer src="./js/player/player-controller.js?v=20260811b"></script>
     <script defer src="./js/app.js"></script>
   </head>
   <body>
-    <main id="loader-view" class="loader-view">
-      <header class="app-header">
-        <div>
-          <p class="eyebrow">LOCAL ASAR PLAYER</p>
-          <h1>Devil Connection</h1>
-        </div>
-        <span class="privacy-state">Local only</span>
-      </header>
-
-      <section class="mount-workspace" aria-labelledby="mount-title">
-        <div class="workspace-copy">
-          <h2 id="mount-title">挂载游戏</h2>
-          <p id="mount-status" class="status-copy" aria-live="polite">
-            等待选择 app.asar
-          </p>
+    <main id="loader-view" class="manager-view">
+      <aside class="manager-sidebar">
+        <div class="manager-brand">
+          <span class="manager-brand-mark" aria-hidden="true">D</span>
+          <span>
+            <strong>Devil Connection</strong>
+            <small>WEB SHELL</small>
+          </span>
         </div>
 
-        <button id="file-drop" class="file-drop" type="button">
-          <span class="file-mark" aria-hidden="true">ASAR</span>
-          <span class="file-action">选择 app.asar</span>
-          <span class="file-meta">文件只在当前浏览器页面中读取</span>
-        </button>
-        <input
-          id="asar-input"
-          class="visually-hidden"
-          type="file"
-          accept=".asar,application/octet-stream"
-        />
+        <nav class="manager-nav" aria-label="管理器页面" role="tablist">
+          <button
+            id="manager-tab-launch"
+            class="manager-tab is-active"
+            type="button"
+            role="tab"
+            aria-controls="manager-page-launch"
+            aria-selected="true"
+            data-page="launch"
+          >
+            <span aria-hidden="true">01</span>
+            启动
+          </button>
+          <button
+            id="manager-tab-mods"
+            class="manager-tab"
+            type="button"
+            role="tab"
+            aria-controls="manager-page-mods"
+            aria-selected="false"
+            data-page="mods"
+            tabindex="-1"
+          >
+            <span aria-hidden="true">02</span>
+            模组
+          </button>
+        </nav>
 
-        <div id="progress-row" class="progress-row" hidden>
-          <div class="progress-track" aria-hidden="true">
-            <span id="progress-fill"></span>
+        <div class="manager-local-state">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span>仅在本地读取</span>
+        </div>
+      </aside>
+
+      <section class="manager-main">
+        <header class="manager-statusbar">
+          <p id="mount-status" class="status-copy" aria-live="polite">等待载入核心 ASAR</p>
+          <span class="privacy-state">LOCAL SESSION</span>
+        </header>
+
+        <section
+          id="manager-page-launch"
+          class="manager-page"
+          role="tabpanel"
+          aria-labelledby="manager-tab-launch"
+          data-page="launch"
+        >
+          <p class="section-kicker">SESSION SETUP</p>
+          <h1 id="launch-title">启动游戏</h1>
+          <p class="page-lead">载入正版游戏归档，确认模组顺序后再建立本次游戏会话。</p>
+
+          <div class="launch-actions">
+            <button id="load-core-game" class="launch-action" type="button">
+              <span class="launch-action-symbol" aria-hidden="true">+</span>
+              <span>
+                <strong>载入核心 ASAR</strong>
+                <small>选择游戏 resources\app.asar</small>
+              </span>
+            </button>
+            <button id="start-game" class="launch-action is-primary" type="button" disabled>
+              <span class="launch-action-symbol" aria-hidden="true">&#9654;</span>
+              <span>
+                <strong>开始游戏</strong>
+                <small>使用当前模组顺序启动</small>
+              </span>
+            </button>
           </div>
-          <span id="progress-label">0%</span>
-        </div>
+          <input
+            id="core-asar-input"
+            type="file"
+            accept=".asar,application/octet-stream"
+            hidden
+          />
 
-        <details id="error-details" class="error-details" hidden>
-          <summary>加载详情</summary>
-          <pre id="error-output"></pre>
-        </details>
+          <dl id="core-details" class="core-details" hidden>
+            <div><dt>核心归档</dt><dd id="core-file">app.asar</dd></div>
+            <div><dt>游戏版本</dt><dd id="core-version">--</dd></div>
+            <div><dt>文件大小</dt><dd id="core-size">--</dd></div>
+            <div><dt>启用模组</dt><dd id="selected-mod-count">0 个</dd></div>
+          </dl>
+
+          <div id="progress-row" class="progress-row" hidden>
+            <div class="progress-track" aria-hidden="true"><span id="progress-fill"></span></div>
+            <span id="progress-label">0%</span>
+          </div>
+
+          <details id="error-details" class="error-details" hidden>
+            <summary>加载详情</summary>
+            <pre id="error-output"></pre>
+          </details>
+        </section>
+
+        <section
+          id="manager-page-mods"
+          class="manager-page"
+          role="tabpanel"
+          aria-labelledby="manager-tab-mods"
+          data-page="mods"
+          hidden
+        >
+          <header class="mods-header">
+            <div>
+              <p class="section-kicker">LOAD ORDER</p>
+              <h1 id="mods-title">模组管理</h1>
+            </div>
+            <button id="add-mods" class="add-mod-button" type="button">
+              <span aria-hidden="true">+</span>
+              添加模组
+            </button>
+          </header>
+          <p class="page-lead">模组由上到下依次载入；越靠后的模组覆盖优先级越高。</p>
+          <input
+            id="mod-asar-input"
+            type="file"
+            accept=".asar,application/octet-stream"
+            multiple
+            hidden
+          />
+
+          <div class="mod-list-heading" aria-hidden="true">
+            <span>载入顺序</span>
+            <span>状态与操作</span>
+          </div>
+          <div id="mod-list" class="mod-list">
+            <div class="mod-empty">
+              <strong>尚未添加模组</strong>
+              <span>添加本地 DCML .asar 文件后会显示在这里</span>
+            </div>
+          </div>
+
+          <p class="mod-trust-note">
+            带有 hook.js 的代码模组会在游戏页面中运行，请只载入可信来源的文件。
+          </p>
+        </section>
       </section>
     </main>
 
@@ -126,7 +233,11 @@
               </div>
               <div>
                 <dt>资源来源</dt>
-                <dd>本地 ASAR</dd>
+                <dd>分层本地 ASAR</dd>
+              </div>
+              <div>
+                <dt>启用模组</dt>
+                <dd id="mounted-mods">0 个</dd>
               </div>
             </dl>
 
