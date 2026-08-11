@@ -70,16 +70,86 @@
     </main>
 
     <section id="player-view" class="player-view" hidden>
-      <header class="player-bar">
-        <div class="player-identity">
-          <span class="live-dot" aria-hidden="true"></span>
-          <span id="mounted-file">app.asar</span>
+      <button
+        id="open-player-menu"
+        class="player-menu-trigger"
+        type="button"
+        aria-controls="player-menu"
+        aria-expanded="false"
+        aria-label="打开游戏菜单"
+      >
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+        <span aria-hidden="true"></span>
+      </button>
+
+      <div
+        id="player-menu"
+        class="player-menu"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="player-menu-title"
+        hidden
+      >
+        <div class="player-menu-shell">
+          <header class="player-menu-header">
+            <div class="player-menu-brand">
+              <span class="live-dot" aria-hidden="true"></span>
+              <span>LOCAL ASAR PLAYER</span>
+            </div>
+            <button
+              id="close-player-menu"
+              class="player-menu-close"
+              type="button"
+              aria-label="关闭游戏菜单"
+            >
+              &times;
+            </button>
+          </header>
+
+          <div class="player-menu-content">
+            <p class="player-menu-state">游戏运行中</p>
+            <h2 id="player-menu-title">Devil Connection</h2>
+
+            <dl class="player-session-details">
+              <div>
+                <dt>游戏归档</dt>
+                <dd id="mounted-file">app.asar</dd>
+              </div>
+              <div>
+                <dt>游戏版本</dt>
+                <dd id="mounted-version">--</dd>
+              </div>
+              <div>
+                <dt>文件大小</dt>
+                <dd id="mounted-size">--</dd>
+              </div>
+              <div>
+                <dt>资源来源</dt>
+                <dd>本地 ASAR</dd>
+              </div>
+            </dl>
+
+            <div class="player-menu-actions">
+              <button id="reload-game" class="player-menu-action" type="button">
+                <span class="action-symbol" aria-hidden="true">&#8635;</span>
+                <span>
+                  <strong>重新载入</strong>
+                  <small>重启当前游戏会话</small>
+                </span>
+              </button>
+              <button id="close-game" class="player-menu-action is-danger" type="button">
+                <span class="action-symbol" aria-hidden="true">&#8592;</span>
+                <span>
+                  <strong>退出游戏</strong>
+                  <small>释放归档并返回选择页面</small>
+                </span>
+              </button>
+            </div>
+          </div>
         </div>
-        <div class="player-actions">
-          <button id="reload-game" type="button">重新载入</button>
-          <button id="close-game" type="button">退出游戏</button>
-        </div>
-      </header>
+      </div>
+
       <iframe
         id="game-frame"
         title="Devil Connection"
