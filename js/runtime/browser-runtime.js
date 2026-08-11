@@ -554,9 +554,8 @@
     ElementPrototype.__dcVfsPatched = true
   }
 
-  function installJQuery(target) {
+  function installJQuery(target, vfs) {
     var $ = target.jQuery
-    var vfs = target.__ASAR_VFS__
     if (!$ || !vfs || $.__dcVfsPatched) return
     var resolve = makeResolver(vfs)
 
@@ -588,7 +587,6 @@
 
   function install(target, vfs) {
     if (!target || !vfs || target.__dcVfsRuntimeInstalled) return
-    target.__ASAR_VFS__ = vfs
     installFetch(target, vfs)
     installXMLHttpRequest(target, vfs)
     installWorker(target, vfs)
@@ -604,5 +602,4 @@
     rewriteMarkup: rewriteMarkup,
     rewriteSrcset: rewriteSrcset,
   }
-  global.DCVfsRuntime = DCWeb.Runtime
 })(window)

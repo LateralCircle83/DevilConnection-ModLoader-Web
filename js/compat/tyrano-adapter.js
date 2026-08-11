@@ -176,7 +176,7 @@
       throw new Error('Tyrano runtime was not ready for browser adaptation')
     }
 
-    DCWeb.Runtime.installJQuery(target)
+    DCWeb.Runtime.installJQuery(target, vfs)
     target.TYRANO.cache_text = true
     target.TYRANO.resource_concurrency = 6
     DCWeb.TyranoSaveAdapter.install(target, $, vfs)

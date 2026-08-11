@@ -22,7 +22,6 @@ app.asar -> AsarArchive -> LayeredVfs -> AssetResolver -> browser runtime
 - `compat/browser-api.js` provides the Electron-style `window.api` surface expected by the game.
 - `compat/tyrano-save-adapter.js` owns Tyrano save encoding and Blob URL restoration.
 - `compat/tyrano-adapter.js` owns Tyrano startup, audio unlock, and browser-specific tag behavior.
-- `compat/compat.js` is a small public facade. `window.DCCompat` remains as a legacy alias.
 
 ## Game and shell
 
@@ -36,14 +35,12 @@ app.asar -> AsarArchive -> LayeredVfs -> AssetResolver -> browser runtime
 
 A future mod loader should produce archive-like sources and append them to `LayeredVfs` with stable layer IDs. It must not modify `AsarArchive`, the storage adapter, or DOM interceptors. Saves store logical ASAR paths rather than Blob URLs or layer IDs, so the active layer set resolves them when a save is loaded.
 
-## Compatibility globals
+## Runtime bridges
 
-The following globals remain stable for game scripts and existing diagnostics:
+`window.DCWeb` is the shell's only public namespace. The iframe bootstrap reads the current resolver through the host-only `window.__dcActiveResolver`; subsequent runtime and Tyrano setup receive that resolver explicitly.
 
-- `window.DCAsar`
-- `window.DCVfsRuntime`
-- `window.DCCompat`
-- iframe `window.__ASAR_VFS__`
-- host `window.__dcActiveArchive` (legacy alias of `__dcActiveResolver`)
+Inside the game iframe, `window.api`, `window.process`, and `window.__dirname` intentionally emulate the Electron surface consumed by the original game. They are game compatibility contracts rather than shell module aliases.
+
+The removed `window.DCAsar`, `window.DCVfsRuntime`, `window.DCCompat`, `window.__dcActiveArchive`, and iframe `window.__ASAR_VFS__` names must not be reintroduced. Shell modules should depend on `DCWeb.*` directly and pass session state explicitly.
 
 When the full host script chain has initialized, the document root carries `data-dc-shell-ready="true"` for lightweight diagnostics.

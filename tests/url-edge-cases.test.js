@@ -129,8 +129,10 @@ function testLayerPrecedence() {
 }
 
 function testPublicContracts() {
-  assert.equal(window.DCAsar.AsarArchive, AsarArchive)
-  assert.equal(window.DCVfsRuntime, window.DCWeb.Runtime)
+  assert.equal(window.DCWeb.AsarArchive, AsarArchive)
+  assert.equal(window.DCAsar, undefined)
+  assert.equal(window.DCVfsRuntime, undefined)
+  assert.equal(window.DCCompat, undefined)
   assert.deepEqual(
     Object.keys(window.DCWeb.Runtime).sort(),
     ['copyArrayBufferToRealm', 'install', 'installJQuery', 'rewriteCssValue', 'rewriteMarkup', 'rewriteSrcset'],

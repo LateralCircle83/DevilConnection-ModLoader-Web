@@ -142,9 +142,4 @@
   }
 
   DCWeb.AsarArchive = AsarArchive
-  global.DCAsar = {
-    AsarArchive: AsarArchive,
-    mimeForPath: Path.mimeForPath,
-    normalizePath: Path.normalize,
-  }
 })(window)

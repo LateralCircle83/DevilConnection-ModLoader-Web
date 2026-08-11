@@ -40,7 +40,6 @@
   PlayerController.prototype.publishSession = function (session) {
     this.activeSession = session
     global.__dcActiveResolver = session ? session.resolver : null
-    global.__dcActiveArchive = session ? session.resolver : null
   }
 
   PlayerController.prototype.mount = async function (file) {

@@ -21,10 +21,10 @@
 
     var bootstrap = inlineScript(doc, [
       ';(function () {',
-      '  var vfs = parent.__dcActiveResolver || parent.__dcActiveArchive',
+      '  var vfs = parent.__dcActiveResolver',
       '  if (!vfs) throw new Error("ASAR mount is not available")',
       '  parent.DCWeb.Runtime.install(window, vfs)',
-      '  parent.DCWeb.Compat.installBrowserApi(window, vfs)',
+      '  parent.DCWeb.BrowserApi.install(window, vfs)',
       '  window.addEventListener("error", function (event) {',
       '    parent.postMessage({ type: "dc-player-error", message: event.message, stack: event.error && event.error.stack }, "*")',
       '  })',
@@ -37,12 +37,15 @@
       var normalized = DCWeb.ResourcePath.normalize(sourcePath)
       if (normalized === 'electron_latest.js') {
         script.removeAttribute('src')
-        script.textContent = 'parent.DCWeb.Compat.installTyranoCompat(window, window.__ASAR_VFS__)'
+        script.textContent = 'parent.DCWeb.TyranoAdapter.install(window, parent.__dcActiveResolver)'
         return
       }
       if (resolver.has(sourcePath)) script.setAttribute('src', resolver.getObjectUrl(sourcePath))
       if (normalized === 'tyrano/libs/jquery-3.6.0.min.js') {
-        script.parentNode.insertBefore(inlineScript(doc, 'parent.DCWeb.Runtime.installJQuery(window)'), script.nextSibling)
+        script.parentNode.insertBefore(
+          inlineScript(doc, 'parent.DCWeb.Runtime.installJQuery(window, parent.__dcActiveResolver)'),
+          script.nextSibling,
+        )
       }
     })
 
