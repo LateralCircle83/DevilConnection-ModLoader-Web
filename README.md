@@ -20,6 +20,14 @@ Current scope:
 
 The shell does not upload the selected archive. It creates temporary in-browser object URLs for requested files and revokes them when the game is closed.
 
+## Test
+
+Run the URL, save serialization, CSS dependency, and responsive resource edge cases with:
+
+```console
+node tests/url-edge-cases.test.js
+```
+
 ## Repository hygiene
 
 All `*.asar` files are ignored by Git. Do not commit game archives or extracted game assets.

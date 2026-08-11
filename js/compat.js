@@ -417,20 +417,24 @@
     var api = target.api
     var storage = api.storage
 
+    function countObjectUrls(value) {
+      return (String(value || '').match(/blob(?::|%3a|%253a)/gi) || []).length
+    }
+
     function serialize(value) {
       var restoredUrlCount = 0
       var serialized = JSON.stringify(value, function (key, item) {
         if (typeof item !== 'string') return item
         var restored = vfs.restoreObjectUrls(item)
         if (restored !== item) {
-          restoredUrlCount += (item.match(/blob:/g) || []).length - (restored.match(/blob:/g) || []).length
+          restoredUrlCount += countObjectUrls(item) - countObjectUrls(restored)
         }
         return restored
       })
       var root = target.document && target.document.documentElement
       if (root) {
         root.setAttribute('data-dc-save-restored-urls', String(restoredUrlCount))
-        root.setAttribute('data-dc-save-unmapped-urls', String((serialized.match(/blob:/g) || []).length))
+        root.setAttribute('data-dc-save-unmapped-urls', String(countObjectUrls(serialized)))
       }
       return serialized
     }

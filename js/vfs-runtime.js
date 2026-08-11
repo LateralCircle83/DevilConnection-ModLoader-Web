@@ -15,6 +15,11 @@
     VIDEO: ['src', 'poster'],
   }
 
+  var SRCSET_TAGS = {
+    IMG: true,
+    SOURCE: true,
+  }
+
   function makeResolver(vfs) {
     return function resolve(value, basePath) {
       if (typeof value !== 'string') return value
@@ -23,17 +28,60 @@
   }
 
   function rewriteCssValue(value, resolve) {
-    if (typeof value !== 'string' || value.indexOf('url(') === -1) return value
-    return value.replace(/url\(\s*(['"]?)([^)'"\n]+)\1\s*\)/gi, function (match, quote, path) {
+    if (typeof value !== 'string' || !/(?:url\(|@import)/i.test(value)) return value
+    var output = value.replace(/@import\s+(['"])([^'"\n]+)\1/gi, function (match, quote, path) {
+      var replacement = resolve(path)
+      return replacement === path ? match : '@import "' + replacement + '"'
+    })
+    return output.replace(/url\(\s*(['"]?)([^)'"\n]+)\1\s*\)/gi, function (match, quote, path) {
       var replacement = resolve(path.trim())
       return replacement === path.trim() ? match : 'url("' + replacement + '")'
     })
   }
 
+  function rewriteSrcset(value, resolve) {
+    if (typeof value !== 'string') return value
+    var output = ''
+    var index = 0
+    function isSpace(character) {
+      return character === ' ' || character === '\t' || character === '\n' || character === '\f' || character === '\r'
+    }
+
+    while (index < value.length) {
+      var leadingStart = index
+      while (index < value.length && (isSpace(value.charAt(index)) || value.charAt(index) === ',')) index++
+      output += value.slice(leadingStart, index)
+      if (index >= value.length) break
+
+      var urlStart = index
+      while (index < value.length && !isSpace(value.charAt(index))) index++
+      var url = value.slice(urlStart, index)
+      var trailingCommas = ''
+      while (url.charAt(url.length - 1) === ',') {
+        trailingCommas = ',' + trailingCommas
+        url = url.slice(0, -1)
+      }
+      output += resolve(url) + trailingCommas
+      if (trailingCommas) continue
+
+      var descriptorStart = index
+      var parentheses = 0
+      while (index < value.length) {
+        var character = value.charAt(index)
+        if (character === '(') parentheses++
+        else if (character === ')' && parentheses) parentheses--
+        index++
+        if (character === ',' && parentheses === 0) break
+      }
+      output += value.slice(descriptorStart, index)
+    }
+    return output
+  }
+
   function rewriteMarkup(value, resolve) {
     if (typeof value !== 'string') return value
-    var output = value.replace(/\b(src|poster)\s*=\s*(['"])(.*?)\2/gi, function (match, name, quote, path) {
-      var replacement = resolve(path)
+    var output = value.replace(/\b(src|poster|srcset)\s*=\s*(['"])(.*?)\2/gi, function (match, name, quote, path) {
+      var replacement = name.toLowerCase() === 'srcset' ? rewriteSrcset(path, resolve) : resolve(path)
       return name + '=' + quote + replacement + quote
     })
     return rewriteCssValue(output, resolve)
@@ -402,14 +450,15 @@
 
     var nativeSetAttribute = ElementPrototype.setAttribute
     ElementPrototype.setAttribute = function (name, value) {
-      var upperName = String(name).toLowerCase()
+      var lowerName = String(name).toLowerCase()
       var allowed = URL_ATTRIBUTES[this.tagName] || []
-      if (allowed.indexOf(upperName) !== -1) value = resolve(String(value))
-      if (upperName === 'style') value = rewriteCssValue(String(value), resolve)
+      if (allowed.indexOf(lowerName) !== -1) value = resolve(String(value))
+      if (lowerName === 'srcset' && SRCSET_TAGS[this.tagName]) value = rewriteSrcset(String(value), resolve)
+      if (lowerName === 'style') value = rewriteCssValue(String(value), resolve)
       return nativeSetAttribute.call(this, name, value)
     }
 
-    function patchProperty(ctor, property) {
+    function patchProperty(ctor, property, rewrite) {
       if (!ctor || !ctor.prototype) return
       var descriptor = Object.getOwnPropertyDescriptor(ctor.prototype, property)
       if (!descriptor || !descriptor.set || descriptor.configurable === false) return
@@ -417,7 +466,9 @@
         configurable: descriptor.configurable,
         enumerable: descriptor.enumerable,
         get: descriptor.get,
-        set: function (value) { descriptor.set.call(this, resolve(String(value))) },
+        set: function (value) {
+          descriptor.set.call(this, rewrite ? rewrite(String(value), resolve) : resolve(String(value)))
+        },
       })
     }
 
@@ -428,6 +479,12 @@
     patchProperty(target.HTMLInputElement, 'src')
     patchProperty(target.HTMLTrackElement, 'src')
     patchProperty(target.HTMLVideoElement, 'poster')
+    patchProperty(target.HTMLImageElement, 'srcset', rewriteSrcset)
+    patchProperty(target.HTMLSourceElement, 'srcset', rewriteSrcset)
+    patchProperty(target.HTMLLinkElement, 'href')
+    patchProperty(target.HTMLIFrameElement, 'src')
+    patchProperty(target.HTMLObjectElement, 'data')
+    patchProperty(target.HTMLEmbedElement, 'src')
 
     var stylePrototype = target.CSSStyleDeclaration && target.CSSStyleDeclaration.prototype
     if (stylePrototype && !stylePrototype.__dcVfsPatched) {
@@ -435,6 +492,27 @@
       stylePrototype.setProperty = function (name, value, priority) {
         return nativeSetProperty.call(this, name, rewriteCssValue(String(value), resolve), priority)
       }
+      ;[
+        'background',
+        'backgroundImage',
+        'borderImage',
+        'content',
+        'cssText',
+        'cursor',
+        'listStyle',
+        'listStyleImage',
+        'mask',
+        'maskImage',
+      ].forEach(function (property) {
+        var descriptor = Object.getOwnPropertyDescriptor(stylePrototype, property)
+        if (!descriptor || !descriptor.set || descriptor.configurable === false) return
+        Object.defineProperty(stylePrototype, property, {
+          configurable: descriptor.configurable,
+          enumerable: descriptor.enumerable,
+          get: descriptor.get,
+          set: function (value) { descriptor.set.call(this, rewriteCssValue(String(value), resolve)) },
+        })
+      })
       stylePrototype.__dcVfsPatched = true
     }
 
@@ -443,6 +521,18 @@
       var nativeInsertRule = sheetPrototype.insertRule
       sheetPrototype.insertRule = function (rule, index) {
         return nativeInsertRule.call(this, rewriteCssValue(String(rule), resolve), index)
+      }
+      if (sheetPrototype.replace) {
+        var nativeReplace = sheetPrototype.replace
+        sheetPrototype.replace = function (text) {
+          return nativeReplace.call(this, rewriteCssValue(String(text), resolve))
+        }
+      }
+      if (sheetPrototype.replaceSync) {
+        var nativeReplaceSync = sheetPrototype.replaceSync
+        sheetPrototype.replaceSync = function (text) {
+          return nativeReplaceSync.call(this, rewriteCssValue(String(text), resolve))
+        }
       }
     }
 
@@ -453,26 +543,38 @@
       }
     }
 
+    function rewriteElement(node) {
+      if (!node || node.nodeType !== 1) return node
+      var attributes = URL_ATTRIBUTES[node.tagName] || []
+      attributes.forEach(function (name) {
+        if (node.hasAttribute(name)) {
+          var value = node.getAttribute(name)
+          var replacement = resolve(value)
+          if (replacement !== value) nativeSetAttribute.call(node, name, replacement)
+        }
+      })
+      if (SRCSET_TAGS[node.tagName] && node.hasAttribute('srcset')) {
+        var srcset = node.getAttribute('srcset')
+        var rewrittenSrcset = rewriteSrcset(srcset, resolve)
+        if (rewrittenSrcset !== srcset) nativeSetAttribute.call(node, 'srcset', rewrittenSrcset)
+      }
+      if (node.hasAttribute('style')) {
+        var style = node.getAttribute('style')
+        var rewrittenStyle = rewriteCssValue(style, resolve)
+        if (rewrittenStyle !== style) nativeSetAttribute.call(node, 'style', rewrittenStyle)
+      }
+      if (node.tagName === 'STYLE' && node.textContent) {
+        var css = rewriteCssValue(node.textContent, resolve)
+        if (css !== node.textContent) node.textContent = css
+      }
+      return node
+    }
+
     function rewriteNode(node) {
       if (!node || (node.nodeType !== 1 && node.nodeType !== 11)) return node
-      if (node.nodeType === 1) {
-        var attributes = URL_ATTRIBUTES[node.tagName] || []
-        attributes.forEach(function (name) {
-          if (node.hasAttribute(name)) {
-            var value = node.getAttribute(name)
-            var replacement = resolve(value)
-            if (replacement !== value) nativeSetAttribute.call(node, name, replacement)
-          }
-        })
-        if (node.hasAttribute('style')) {
-          nativeSetAttribute.call(node, 'style', rewriteCssValue(node.getAttribute('style'), resolve))
-        }
-        if (node.tagName === 'STYLE' && node.textContent) {
-          node.textContent = rewriteCssValue(node.textContent, resolve)
-        }
-      }
+      rewriteElement(node)
       if (node.querySelectorAll) {
-        node.querySelectorAll('[style],img,video,audio,source,script,link,input,track,object,embed,style').forEach(rewriteNode)
+        node.querySelectorAll('[style],[srcset],img,video,audio,source,script,link,input,track,object,embed,iframe,style').forEach(rewriteElement)
       }
       return node
     }
@@ -490,10 +592,24 @@
     if (target.MutationObserver && target.document) {
       new target.MutationObserver(function (records) {
         records.forEach(function (record) {
-          record.addedNodes.forEach(rewriteNode)
+          if (record.type === 'childList') {
+            record.addedNodes.forEach(rewriteNode)
+            if (record.target && record.target.tagName === 'STYLE') rewriteElement(record.target)
+          } else if (record.type === 'attributes') rewriteElement(record.target)
+          else if (record.type === 'characterData' && record.target.parentNode && record.target.parentNode.tagName === 'STYLE') {
+            rewriteElement(record.target.parentNode)
+          }
         })
-      }).observe(target.document, { childList: true, subtree: true })
+      }).observe(target.document, {
+        attributeFilter: ['data', 'href', 'poster', 'src', 'srcset', 'style'],
+        attributes: true,
+        characterData: true,
+        childList: true,
+        subtree: true,
+      })
     }
+
+    if (target.document && target.document.documentElement) rewriteNode(target.document.documentElement)
 
     ElementPrototype.__dcVfsPatched = true
   }
@@ -546,5 +662,6 @@
     installJQuery: installJQuery,
     rewriteCssValue: rewriteCssValue,
     rewriteMarkup: rewriteMarkup,
+    rewriteSrcset: rewriteSrcset,
   }
 })(window)

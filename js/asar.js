@@ -33,7 +33,7 @@
   }
 
   function extensionOf(path) {
-    var clean = String(path || '').split(/[?#]/, 1)[0]
+    var clean = String(path || '')
     var dot = clean.lastIndexOf('.')
     return dot === -1 ? '' : clean.substring(dot).toLowerCase()
   }
@@ -48,6 +48,26 @@
     } catch (error) {
       return value
     }
+  }
+
+  function encodePath(path) {
+    return String(path || '')
+      .split('/')
+      .map(function (segment) {
+        return encodeURIComponent(segment).replace(/[!'()*]/g, function (character) {
+          return '%' + character.charCodeAt(0).toString(16).toUpperCase()
+        })
+      })
+      .join('/')
+  }
+
+  function fragmentOf(value) {
+    var hash = String(value || '').indexOf('#')
+    return hash === -1 ? '' : String(value).slice(hash)
+  }
+
+  function replaceLiteral(value, search, replacement) {
+    return value.indexOf(search) === -1 ? value : value.split(search).join(replacement)
   }
 
   function collapseSegments(path) {
@@ -86,6 +106,7 @@
     raw = safeDecode(raw.split('#', 1)[0].split('?', 1)[0])
     raw = raw.replace(/\\/g, '/')
     raw = raw.replace(/^file:\/\/\/?/i, '')
+    var rootRelative = raw.charAt(0) === '/'
 
     var anchored = raw.match(/(?:^|\/)(data|tyrano)\/(.+)$/i)
     if (anchored) {
@@ -93,7 +114,7 @@
     }
 
     raw = raw.replace(/^[a-z]:\//i, '').replace(/^\/+/, '')
-    if (basePath) {
+    if (basePath && !rootRelative) {
       var baseDir = collapseSegments(basePath).split('/')
       baseDir.pop()
       raw = baseDir.concat(raw.split('/')).join('/')
@@ -204,13 +225,18 @@
   AsarArchive.prototype.getEntry = function (input, basePath, seen) {
     var path = this.findPath(input, basePath)
     if (!path) return null
+    return this.getEntryByPath(path, seen)
+  }
+
+  AsarArchive.prototype.getEntryByPath = function (path, seen) {
     var entry = this.entries.get(path)
     if (!entry || !entry.link) return entry || null
 
     seen = seen || new Set()
     if (seen.has(path)) throw new Error('Circular ASAR link: ' + path)
     seen.add(path)
-    return this.getEntry(entry.link, '', seen)
+    var linkedPath = this.entries.has(entry.link) ? entry.link : this.findPath(entry.link)
+    return linkedPath ? this.getEntryByPath(linkedPath, seen) : null
   }
 
   AsarArchive.prototype.has = function (input, basePath) {
@@ -219,7 +245,7 @@
 
   AsarArchive.prototype.getBlob = function (input, basePath) {
     var path = this.findPath(input, basePath)
-    var entry = this.getEntry(path)
+    var entry = this.getEntryByPath(path)
     if (!entry) return null
     if (entry.unpacked) {
       throw new Error('ASAR unpacked entries are not available in browser mode: ' + path)
@@ -245,31 +271,64 @@
     }
     var path = this.findPath(input, basePath)
     if (!path) return input
-    if (this.preparedUrls.has(path)) return this.preparedUrls.get(path)
-    if (this.objectUrls.has(path)) return this.objectUrls.get(path)
+    var fragment = fragmentOf(input)
+    if (this.preparedUrls.has(path)) return this.preparedUrls.get(path) + fragment
+    if (this.objectUrls.has(path)) return this.objectUrls.get(path) + fragment
 
-    var blob = this.getBlob(path)
+    var blob = this.getBlob(input, basePath)
     var url = URL.createObjectURL(blob)
     this.objectUrls.set(path, url)
     this.pathsByObjectUrl.set(url, path)
-    return url
+    return url + fragment
   }
 
   AsarArchive.prototype.restoreObjectUrls = function (value) {
-    if (typeof value !== 'string' || value.indexOf('blob:') === -1) return value
-    var archive = this
-    return value.replace(/blob:[^\s"'()<>;&]+/g, function (url) {
-      return archive.pathsByObjectUrl.get(url) || url
+    if (typeof value !== 'string' || !/blob(?::|%3a|%253a)/i.test(value)) return value
+    var restored = value
+    this.pathsByObjectUrl.forEach(function (path, url) {
+      var urlVariant = url
+      var pathVariant = encodePath(path)
+      for (var depth = 0; depth < 3; depth++) {
+        restored = replaceLiteral(restored, urlVariant, pathVariant)
+        urlVariant = encodeURIComponent(urlVariant)
+        pathVariant = encodeURIComponent(pathVariant)
+      }
     })
+    return restored
   }
 
   AsarArchive.prototype.rewriteCss = function (cssText, cssPath) {
     var archive = this
-    return cssText.replace(/url\(\s*(['"]?)([^)'"\n]+)\1\s*\)/gi, function (match, quote, raw) {
+    var rewritten = cssText.replace(/@import\s+(['"])([^'"\n]+)\1/gi, function (match, quote, raw) {
       var resolved = resolveCssPath(cssPath, raw)
       if (!resolved || !archive.has(resolved)) return match
-      return 'url("' + archive.getObjectUrl(resolved) + '")'
+      return '@import "' + archive.getObjectUrl(raw, cssPath) + '"'
     })
+    return rewritten.replace(/url\(\s*(['"]?)([^)'"\n]+)\1\s*\)/gi, function (match, quote, raw) {
+      var resolved = resolveCssPath(cssPath, raw)
+      if (!resolved || !archive.has(resolved)) return match
+      return 'url("' + archive.getObjectUrl(raw, cssPath) + '")'
+    })
+  }
+
+  AsarArchive.prototype.findStyleDependencies = function (cssText, cssPath) {
+    var archive = this
+    var dependencies = new Set()
+    function add(raw) {
+      var resolved = resolveCssPath(cssPath, raw)
+      if (!resolved) return
+      var canonical = archive.findPath(raw, cssPath)
+      if (extensionOf(canonical) === '.css') dependencies.add(canonical)
+    }
+    cssText.replace(/@import\s+(['"])([^'"\n]+)\1/gi, function (match, quote, raw) {
+      add(raw)
+      return match
+    })
+    cssText.replace(/url\(\s*(['"]?)([^)'"\n]+)\1\s*\)/gi, function (match, quote, raw) {
+      add(raw)
+      return match
+    })
+    return Array.from(dependencies)
   }
 
   AsarArchive.prototype.prepareStyles = async function (onProgress) {
@@ -278,15 +337,27 @@
       return extensionOf(path) === '.css'
     })
 
-    for (var index = 0; index < paths.length; index++) {
-      var path = paths[index]
+    var preparedCount = 0
+    async function prepare(path, ancestors) {
+      if (archive.preparedUrls.has(path) || ancestors.has(path)) return
+      var nextAncestors = new Set(ancestors)
+      nextAncestors.add(path)
       var css = await this.readText(path)
+      var dependencies = this.findStyleDependencies(css, path)
+      for (var dependencyIndex = 0; dependencyIndex < dependencies.length; dependencyIndex++) {
+        await prepare.call(this, dependencies[dependencyIndex], nextAncestors)
+      }
       var rewritten = this.rewriteCss(css, path)
       var url = URL.createObjectURL(new Blob([rewritten], { type: mimeForPath(path) }))
       this.preparedUrls.set(path, url)
       this.pathsByObjectUrl.set(url, path)
-      if (onProgress) onProgress(index + 1, paths.length, path)
-      if ((index + 1) % 4 === 0) await new Promise(function (resolve) { setTimeout(resolve, 0) })
+      preparedCount++
+      if (onProgress) onProgress(preparedCount, paths.length, path)
+      if (preparedCount % 4 === 0) await new Promise(function (resolve) { setTimeout(resolve, 0) })
+    }
+
+    for (var index = 0; index < paths.length; index++) {
+      await prepare.call(this, paths[index], new Set())
     }
     return archive
   }
