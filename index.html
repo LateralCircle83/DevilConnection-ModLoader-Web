@@ -6,9 +6,24 @@
     <meta name="color-scheme" content="light" />
     <title>Devil Connection Web Shell</title>
     <link rel="stylesheet" href="./styles.css" />
-    <script defer src="./js/asar.js"></script>
-    <script defer src="./js/vfs-runtime.js"></script>
-    <script defer src="./js/compat.js"></script>
+    <script defer src="./js/core/namespace.js"></script>
+    <script defer src="./js/core/resource-path.js"></script>
+    <script defer src="./js/archive/asar-archive.js"></script>
+    <script defer src="./js/vfs/layered-vfs.js"></script>
+    <script defer src="./js/assets/object-url-registry.js"></script>
+    <script defer src="./js/assets/style-processor.js"></script>
+    <script defer src="./js/assets/asset-resolver.js"></script>
+    <script defer src="./js/runtime/resource-rewriter.js"></script>
+    <script defer src="./js/runtime/browser-runtime.js"></script>
+    <script defer src="./js/storage/browser-save-store.js"></script>
+    <script defer src="./js/compat/browser-api.js"></script>
+    <script defer src="./js/compat/tyrano-save-adapter.js"></script>
+    <script defer src="./js/compat/tyrano-adapter.js"></script>
+    <script defer src="./js/compat/compat.js"></script>
+    <script defer src="./js/game/devil-connection-profile.js"></script>
+    <script defer src="./js/game/game-document.js"></script>
+    <script defer src="./js/ui/shell-view.js"></script>
+    <script defer src="./js/player/player-controller.js"></script>
     <script defer src="./js/app.js"></script>
   </head>
   <body>
@@ -75,4 +90,3 @@
     </section>
   </body>
 </html>
-

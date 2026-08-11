@@ -16,6 +16,8 @@ Current scope:
 - Browser replacements for Electron and Steam calls
 - No Mod ASAR overlay yet
 
+The code is organized around a layered virtual filesystem. The current player mounts one read-only `base-game` layer; future mods can add higher-priority layers without changing ASAR parsing, save storage, or browser resource interception. See [ARCHITECTURE.md](./ARCHITECTURE.md) for module ownership and extension boundaries.
+
 ## Privacy
 
 The shell does not upload the selected archive. It creates temporary in-browser object URLs for requested files and revokes them when the game is closed.

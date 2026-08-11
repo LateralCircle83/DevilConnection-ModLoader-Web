@@ -3,38 +3,48 @@
 const assert = require('node:assert/strict')
 
 global.window = {}
-require('../js/asar.js')
-const { AsarArchive, normalizePath } = window.DCAsar
+require('../js/core/namespace.js')
+require('../js/core/resource-path.js')
+require('../js/archive/asar-archive.js')
+require('../js/vfs/layered-vfs.js')
+require('../js/assets/object-url-registry.js')
+require('../js/assets/style-processor.js')
+require('../js/assets/asset-resolver.js')
+require('../js/runtime/resource-rewriter.js')
+require('../js/runtime/browser-runtime.js')
+
+const { AsarArchive, AssetResolver, LayeredVfs, ResourcePath } = window.DCWeb
+
+function createResolver(archive, id = 'base-game') {
+  return new AssetResolver(new LayeredVfs([{ id, source: archive }]))
+}
 
 function entry(path, offset, size) {
   return [path, { path, offset, size, unpacked: false }]
 }
 
 function loadRuntime() {
-  global.window = {}
-  delete require.cache[require.resolve('../js/vfs-runtime.js')]
-  require('../js/vfs-runtime.js')
-  return window.DCVfsRuntime
+  return window.DCWeb.Runtime
 }
 
 async function testObjectUrlRoundTrip() {
   const path = 'data/image/hero & 100%.png'
   const canonical = 'data/image/hero%20%26%20100%25.png'
   const blobUrl = 'blob:http://127.0.0.1:4173/12345678-1234-1234-1234-123456789abc'
-  const archive = new AsarArchive(null, {}, 0, new Map())
-  archive.pathsByObjectUrl.set(blobUrl, path)
+  const resolver = createResolver(new AsarArchive(null, {}, 0, new Map()))
+  resolver.registry.pathsByUrl.set(blobUrl, path)
 
-  assert.equal(archive.restoreObjectUrls(blobUrl), canonical)
-  assert.equal(archive.restoreObjectUrls(blobUrl + '?v=1&theme=dark#portrait'), canonical + '?v=1&theme=dark#portrait')
-  assert.equal(archive.restoreObjectUrls('url(&quot;' + blobUrl + '&quot;)'), 'url(&quot;' + canonical + '&quot;)')
-  assert.equal(archive.restoreObjectUrls(blobUrl + ', ' + blobUrl + '#second'), canonical + ', ' + canonical + '#second')
+  assert.equal(resolver.restoreObjectUrls(blobUrl), canonical)
+  assert.equal(resolver.restoreObjectUrls(blobUrl + '?v=1&theme=dark#portrait'), canonical + '?v=1&theme=dark#portrait')
+  assert.equal(resolver.restoreObjectUrls('url(&quot;' + blobUrl + '&quot;)'), 'url(&quot;' + canonical + '&quot;)')
+  assert.equal(resolver.restoreObjectUrls(blobUrl + ', ' + blobUrl + '#second'), canonical + ', ' + canonical + '#second')
 
   const encoded = encodeURIComponent(blobUrl + '?v=1&theme=dark')
-  assert.equal(decodeURIComponent(archive.restoreObjectUrls(encoded)), canonical + '?v=1&theme=dark')
+  assert.equal(decodeURIComponent(resolver.restoreObjectUrls(encoded)), canonical + '?v=1&theme=dark')
 
   const doubleEncoded = encodeURIComponent(encoded)
   assert.equal(
-    decodeURIComponent(decodeURIComponent(archive.restoreObjectUrls(doubleEncoded))),
+    decodeURIComponent(decodeURIComponent(resolver.restoreObjectUrls(doubleEncoded))),
     canonical + '?v=1&theme=dark',
   )
 }
@@ -50,15 +60,16 @@ async function testFragmentsAndReservedFileNames() {
   )
 
   assert.equal(archive.findPath('data/image/icon%23100%25.svg'), path)
-  assert.equal(normalizePath('/shared/a.png', 'data/css/main.css'), 'shared/a.png')
+  assert.equal(ResourcePath.normalize('/shared/a.png', 'data/css/main.css'), 'shared/a.png')
   assert.equal(archive.getBlob('data/image/icon%23100%25.svg').type, 'image/svg+xml')
 
-  const objectUrl = archive.getObjectUrl('data/image/icon%23100%25.svg?v=4#symbol')
+  const resolver = createResolver(archive)
+  const objectUrl = resolver.getObjectUrl('data/image/icon%23100%25.svg?v=4#symbol')
   assert.match(objectUrl, /^blob:/)
   assert.equal(objectUrl.endsWith('#symbol'), true)
   assert.equal(objectUrl.includes('?v=4'), false)
-  assert.equal(archive.restoreObjectUrls(objectUrl), 'data/image/icon%23100%25.svg#symbol')
-  archive.release()
+  assert.equal(resolver.restoreObjectUrls(objectUrl), 'data/image/icon%23100%25.svg#symbol')
+  resolver.release()
 }
 
 async function testNestedStyles() {
@@ -75,16 +86,55 @@ async function testNestedStyles() {
   ])
   const archive = new AsarArchive(new Blob([all]), {}, 0, entries)
 
-  await archive.prepareStyles()
-  const mainText = await (await fetch(archive.preparedUrls.get('data/css/main.css'))).text()
-  const themeText = await (await fetch(archive.preparedUrls.get('data/css/theme.css'))).text()
+  const resolver = createResolver(archive)
+  await resolver.prepareStyles()
+  const mainUrl = resolver.getObjectUrl('data/css/main.css')
+  const themeUrl = resolver.getObjectUrl('data/css/theme.css')
+  const mainText = await (await fetch(mainUrl)).text()
+  const themeText = await (await fetch(themeUrl)).text()
 
-  assert.equal(mainText.includes(archive.preparedUrls.get('data/css/theme.css')), true)
-  assert.deepEqual(Array.from(archive.preparedUrls.keys()).sort(), ['data/css/main.css', 'data/css/theme.css'])
+  assert.equal(mainText.includes(themeUrl), true)
+  assert.equal(resolver.hasPrepared('data/css/main.css'), true)
+  assert.equal(resolver.hasPrepared('data/css/theme.css'), true)
   assert.match(mainText, /blob:[^"')]+#mark/)
   assert.match(themeText, /url\("blob:[^"')]+"\)/)
   assert.equal(themeText.includes('?v=2'), false)
-  archive.release()
+  resolver.release()
+}
+
+function testLayerPrecedence() {
+  const base = new AsarArchive(
+    new Blob(['base-onlybase']),
+    {},
+    0,
+    new Map([
+      entry('data/shared.txt', 0, 4),
+      entry('data/base.txt', 4, 8),
+    ]),
+  )
+  const mod = new AsarArchive(
+    new Blob(['mod']),
+    {},
+    0,
+    new Map([entry('data/shared.txt', 0, 3)]),
+  )
+  const vfs = new LayeredVfs([
+    { id: 'base-game', kind: 'base', source: base },
+    { id: 'mod:example', kind: 'mod', source: mod },
+  ])
+
+  assert.equal(vfs.resolve('data/shared.txt').layerId, 'mod:example')
+  assert.equal(vfs.resolve('data/base.txt').layerId, 'base-game')
+  assert.deepEqual(vfs.list('.txt').sort(), ['data/base.txt', 'data/shared.txt'])
+}
+
+function testPublicContracts() {
+  assert.equal(window.DCAsar.AsarArchive, AsarArchive)
+  assert.equal(window.DCVfsRuntime, window.DCWeb.Runtime)
+  assert.deepEqual(
+    Object.keys(window.DCWeb.Runtime).sort(),
+    ['copyArrayBufferToRealm', 'install', 'installJQuery', 'rewriteCssValue', 'rewriteMarkup', 'rewriteSrcset'],
+  )
 }
 
 function testRuntimeRewriters() {
@@ -119,7 +169,9 @@ async function main() {
   await testObjectUrlRoundTrip()
   await testFragmentsAndReservedFileNames()
   await testNestedStyles()
+  testLayerPrecedence()
   testRuntimeRewriters()
+  testPublicContracts()
   console.log('URL edge-case tests passed')
 }
 
