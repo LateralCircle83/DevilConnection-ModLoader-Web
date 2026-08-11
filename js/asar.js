@@ -258,7 +258,7 @@
   AsarArchive.prototype.restoreObjectUrls = function (value) {
     if (typeof value !== 'string' || value.indexOf('blob:') === -1) return value
     var archive = this
-    return value.replace(/blob:[^\s"'()<>]+/g, function (url) {
+    return value.replace(/blob:[^\s"'()<>;&]+/g, function (url) {
       return archive.pathsByObjectUrl.get(url) || url
     })
   }
