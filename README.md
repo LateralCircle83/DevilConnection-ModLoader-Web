@@ -1,35 +1,100 @@
 # Devil Connection Web Shell
 
-A static, read-only browser shell for a user-provided `app.asar` from Devil Connection.
+这是一个纯静态的浏览器运行壳，用来加载玩家自己拥有的《Devil Connection》游戏 `app.asar`。
 
-The repository contains no game data. The selected archive is parsed locally and remains unchanged. Assets are exposed to TyranoScript as temporary Blob URLs backed by byte ranges of the selected file.
+项目不包含游戏本体，也不会把游戏归档上传到服务器。浏览器只在当前页面中读取归档，并将需要的文件临时转换成浏览器可以使用的资源。
 
-## Run
+## 当前功能
 
-Open `index.html` in a modern browser and select the `app.asar` from your installed copy of the game. A regular HTTP static host also works; HTTPS, Service Worker, Node.js, and uploads are not required.
+- 直接读取原版 `app.asar`，不向磁盘解包或修改归档
+- 在浏览器中运行 TyranoScript 游戏
+- 兼容游戏需要的部分 Electron 接口
+- 使用 IndexedDB 保存游戏存档
+- 支持重新载入和退出当前游戏会话
+- 桌面与移动浏览器自适应界面
 
-Current scope:
+模组加载暂未开放，后续会在不修改游戏归档的前提下加入。
 
-- Original `app.asar` only
-- Read-only ASAR parsing
-- IndexedDB-backed browser storage for saves
-- Browser replacements for Electron and Steam calls
-- No Mod ASAR overlay yet
+## 准备工作
 
-The code is organized around a layered virtual filesystem. The current player mounts one read-only `base-game` layer; future mods can add higher-priority layers without changing ASAR parsing, save storage, or browser resource interception. See [ARCHITECTURE.md](./ARCHITECTURE.md) for module ownership and extension boundaries.
+你需要：
 
-## Privacy
+- 一份通过正规渠道购买并安装的《Devil Connection》
+- 游戏安装目录中的 `app.asar`，通常位于 `resources\app.asar`
+- 较新的 Chrome、Edge 或其他 Chromium 系浏览器
+- Python 3，仅在使用附带的临时静态服务器时需要
 
-The shell does not upload the selected archive. It creates temporary in-browser object URLs for requested files and revokes them when the game is closed.
+## 启动方法
 
-## Test
+推荐使用项目附带的临时静态服务器：
 
-Run the URL, save serialization, CSS dependency, and responsive resource edge cases with:
+1. 双击 `start_server.bat`。
+2. 保持命令窗口开启。
+3. 在浏览器访问 `http://127.0.0.1:4173/`。
+4. 点击“选择 app.asar”，选择自己游戏目录中的归档。
+5. 等待资源准备完成，然后在游戏画面中点击开始。
+
+也可以指定其他端口：
+
+```bat
+start_server.bat 8080
+```
+
+部分浏览器允许直接打开 `index.html`，但使用本地 HTTP 地址通常具有更稳定的资源加载行为。
+
+游戏运行后，左上角按钮可以打开全屏菜单，查看当前归档信息、重新载入游戏或退出会话。
+
+## 存档
+
+存档默认保存在浏览器的 IndexedDB 中；如果 IndexedDB 不可用，程序会尝试使用 localStorage。
+
+浏览器会按照“协议 + 地址 + 端口”隔离数据。因此，`127.0.0.1:4173`、`localhost:4173` 和其他端口拥有不同的存档空间。建议始终使用同一个访问地址，并避免清除该站点的浏览器数据。
+
+保存前，程序会把临时 Blob URL 还原成游戏归档中的稳定路径，所以刷新页面后仍能重新解析存档中的图片和其他资源。
+
+## 隐私与游戏文件
+
+- `app.asar` 只由当前浏览器页面在本地读取。
+- 项目没有上传接口，也不需要远程后端。
+- 游戏文件不会被提取到项目目录。
+- 关闭游戏会话后，页面会释放创建过的临时资源地址。
+- Git 已忽略所有 `*.asar` 和 `*.asar.unpacked` 内容。
+
+请只使用自己合法拥有的游戏文件，不要分发游戏归档或解包后的资源。
+
+本项目是非官方兼容工具，与游戏开发者、发行商及相关平台没有隶属或授权关系。游戏名称及游戏内容的权利归其各自权利人所有。
+
+## 已知限制
+
+- 当前只支持《Devil Connection》原版游戏归档。
+- 模组加载功能尚未实现。
+- Steam 成就、原生窗口控制和 Electron 文件系统等桌面能力无法在普通网页中完整提供。
+- 浏览器兼容补丁针对目前验证过的游戏结构；游戏发行版发生较大变化后，可能需要更新适配层。
+
+## 常见问题
+
+### 双击服务器脚本后提示找不到 Python
+
+安装 Python 3 并确保 `python.exe` 或 `py.exe` 已加入 PATH，然后重新运行 `start_server.bat`。
+
+### 选择文件后提示不是受支持的归档
+
+确认选择的是游戏安装目录 `resources` 文件夹中的原版 `app.asar`，而不是模组 ASAR 或其他 Electron 程序的归档。
+
+### 换了地址后看不到以前的存档
+
+回到之前使用的主机名和端口。例如之前使用 `http://127.0.0.1:4173/`，就不要改用 `http://localhost:4173/`。
+
+### 游戏加载失败或停在某个画面
+
+如果挂载阶段失败，页面会自动展开“加载详情”。如果游戏已经启动后停住，请在浏览器开发者工具的控制台中确认具体错误。
+
+## 开发验证
+
+运行资源路径、存档序列化、CSS 依赖和 VFS 覆盖规则测试：
 
 ```console
 node tests/url-edge-cases.test.js
 ```
 
-## Repository hygiene
-
-All `*.asar` files are ignored by Git. Do not commit game archives or extracted game assets.
+项目变更记录见 [HISTORY.md](./HISTORY.md)。
