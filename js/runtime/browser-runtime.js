@@ -11,7 +11,9 @@
   var URL_ATTRIBUTES = {
     AUDIO: ['src'],
     EMBED: ['src'],
+    FEIMAGE: ['href', 'xlink:href'],
     IFRAME: ['src'],
+    IMAGE: ['href', 'xlink:href'],
     IMG: ['src'],
     INPUT: ['src'],
     LINK: ['href'],
@@ -19,12 +21,31 @@
     SCRIPT: ['src'],
     SOURCE: ['src'],
     TRACK: ['src'],
+    USE: ['href', 'xlink:href'],
     VIDEO: ['src', 'poster'],
   }
 
   var SRCSET_TAGS = {
     IMG: true,
     SOURCE: true,
+  }
+
+  function attributeName(value) {
+    return String(value || '').toLowerCase()
+  }
+
+  function tagName(element) {
+    return String(element && element.tagName || '').toUpperCase()
+  }
+
+  function isResourceAttribute(element, name) {
+    var lowerName = attributeName(name)
+    var allowed = URL_ATTRIBUTES[tagName(element)] || []
+    return allowed.indexOf(lowerName) !== -1 || (lowerName === 'srcset' && SRCSET_TAGS[tagName(element)])
+  }
+
+  function isRestorableAttribute(element, name) {
+    return attributeName(name) === 'style' || isResourceAttribute(element, name)
   }
 
   function parseRange(header, size) {
@@ -388,17 +409,51 @@
     var restore = typeof vfs.restoreObjectUrls === 'function'
       ? function (value) { return typeof value === 'string' ? vfs.restoreObjectUrls(value) : value }
       : function (value) { return value }
+    var logicalStyleDeclarations = new WeakSet()
+    var nativeTextContentDescriptor = null
+
+    function markStyle(element) {
+      if (element && element.style) logicalStyleDeclarations.add(element.style)
+    }
     var ElementPrototype = target.Element && target.Element.prototype
     if (!ElementPrototype || ElementPrototype.__dcVfsPatched) return
 
     var nativeSetAttribute = ElementPrototype.setAttribute
+    var nativeGetAttribute = ElementPrototype.getAttribute
     ElementPrototype.setAttribute = function (name, value) {
-      var lowerName = String(name).toLowerCase()
-      var allowed = URL_ATTRIBUTES[this.tagName] || []
-      if (allowed.indexOf(lowerName) !== -1) value = resolve(String(value))
-      if (lowerName === 'srcset' && SRCSET_TAGS[this.tagName]) value = rewriteSrcset(String(value), resolve)
+      var lowerName = attributeName(name)
+      if (isResourceAttribute(this, lowerName)) value = resolve(String(value))
+      if (lowerName === 'srcset' && SRCSET_TAGS[tagName(this)]) value = rewriteSrcset(String(value), resolve)
       if (lowerName === 'style') value = rewriteCssValue(String(value), resolve)
-      return nativeSetAttribute.call(this, name, value)
+      var result = nativeSetAttribute.call(this, name, value)
+      if (lowerName === 'style') markStyle(this)
+      return result
+    }
+    if (nativeGetAttribute) {
+      ElementPrototype.getAttribute = function (name) {
+        var value = nativeGetAttribute.call(this, name)
+        return value !== null && isRestorableAttribute(this, name) ? restore(value) : value
+      }
+    }
+
+    var nativeSetAttributeNS = ElementPrototype.setAttributeNS
+    var nativeGetAttributeNS = ElementPrototype.getAttributeNS
+    if (nativeSetAttributeNS) {
+      ElementPrototype.setAttributeNS = function (namespace, name, value) {
+        var lowerName = attributeName(name).split(':').pop()
+        if (isResourceAttribute(this, lowerName)) value = resolve(String(value))
+        if (lowerName === 'srcset' && SRCSET_TAGS[tagName(this)]) value = rewriteSrcset(String(value), resolve)
+        if (lowerName === 'style') value = rewriteCssValue(String(value), resolve)
+        var result = nativeSetAttributeNS.call(this, namespace, name, value)
+        if (lowerName === 'style') markStyle(this)
+        return result
+      }
+    }
+    if (nativeGetAttributeNS) {
+      ElementPrototype.getAttributeNS = function (namespace, name) {
+        var value = nativeGetAttributeNS.call(this, namespace, name)
+        return value !== null && isRestorableAttribute(this, attributeName(name).split(':').pop()) ? restore(value) : value
+      }
     }
 
     function patchProperty(ctor, property, rewrite) {
@@ -433,25 +488,42 @@
     if (stylePrototype && !stylePrototype.__dcVfsPatched) {
       var nativeSetProperty = stylePrototype.setProperty
       stylePrototype.setProperty = function (name, value, priority) {
+        logicalStyleDeclarations.add(this)
         return nativeSetProperty.call(this, name, rewriteCssValue(String(value), resolve), priority)
       }
       var nativeGetPropertyValue = stylePrototype.getPropertyValue
       if (nativeGetPropertyValue) {
         stylePrototype.getPropertyValue = function (name) {
-          return restore(nativeGetPropertyValue.call(this, name))
+          var value = nativeGetPropertyValue.call(this, name)
+          return logicalStyleDeclarations.has(this) ? restore(value) : value
         }
       }
       ;[
         ['background', 'background'],
         ['backgroundImage', 'background-image'],
         ['borderImage', 'border-image'],
+        ['borderImageSource', 'border-image-source'],
+        ['clipPath', 'clip-path'],
         ['content', 'content'],
         ['cssText', ''],
         ['cursor', 'cursor'],
+        ['filter', 'filter'],
+        ['fill', 'fill'],
         ['listStyle', 'list-style'],
         ['listStyleImage', 'list-style-image'],
+        ['marker', 'marker'],
+        ['markerEnd', 'marker-end'],
+        ['markerMid', 'marker-mid'],
+        ['markerStart', 'marker-start'],
         ['mask', 'mask'],
         ['maskImage', 'mask-image'],
+        ['offsetPath', 'offset-path'],
+        ['shapeOutside', 'shape-outside'],
+        ['stroke', 'stroke'],
+        ['webkitMask', '-webkit-mask'],
+        ['webkitMaskBoxImage', '-webkit-mask-box-image'],
+        ['webkitMaskBoxImageSource', '-webkit-mask-box-image-source'],
+        ['webkitMaskImage', '-webkit-mask-image'],
       ].forEach(function (entry) {
         var property = entry[0]
         var cssName = entry[1]
@@ -468,12 +540,34 @@
         Object.defineProperty(stylePrototype, property, {
           configurable: descriptor.configurable,
           enumerable: descriptor.enumerable,
-          get: descriptor.get && function () { return restore(descriptor.get.call(this)) },
-          set: function (value) { descriptor.set.call(this, rewriteCssValue(String(value), resolve)) },
+          get: descriptor.get && function () {
+            var value = descriptor.get.call(this)
+            return logicalStyleDeclarations.has(this) ? restore(value) : value
+          },
+          set: function (value) {
+            logicalStyleDeclarations.add(this)
+            descriptor.set.call(this, rewriteCssValue(String(value), resolve))
+          },
         })
       })
       stylePrototype.__dcVfsPatched = true
     }
+
+    function patchMarkupProperty(ctor, property) {
+      if (!ctor || !ctor.prototype) return
+      var descriptor = Object.getOwnPropertyDescriptor(ctor.prototype, property)
+      if (!descriptor || !descriptor.get || !descriptor.set || descriptor.configurable === false) return
+      Object.defineProperty(ctor.prototype, property, {
+        configurable: descriptor.configurable,
+        enumerable: descriptor.enumerable,
+        get: function () { return restore(descriptor.get.call(this)) },
+        set: function (value) { descriptor.set.call(this, rewriteMarkup(String(value), resolve)) },
+      })
+    }
+
+    patchMarkupProperty(target.Element, 'innerHTML')
+    patchMarkupProperty(target.Element, 'outerHTML')
+    patchMarkupProperty(target.ShadowRoot, 'innerHTML')
 
     var sheetPrototype = target.CSSStyleSheet && target.CSSStyleSheet.prototype
     if (sheetPrototype && sheetPrototype.insertRule) {
@@ -504,27 +598,35 @@
 
     function rewriteElement(node) {
       if (!node || node.nodeType !== 1) return node
-      var attributes = URL_ATTRIBUTES[node.tagName] || []
+      var nodeTagName = tagName(node)
+      var attributes = URL_ATTRIBUTES[nodeTagName] || []
       attributes.forEach(function (name) {
         if (node.hasAttribute(name)) {
-          var value = node.getAttribute(name)
+          var value = nativeGetAttribute.call(node, name)
           var replacement = resolve(value)
           if (replacement !== value) nativeSetAttribute.call(node, name, replacement)
         }
       })
-      if (SRCSET_TAGS[node.tagName] && node.hasAttribute('srcset')) {
-        var srcset = node.getAttribute('srcset')
+      if (SRCSET_TAGS[nodeTagName] && node.hasAttribute('srcset')) {
+        var srcset = nativeGetAttribute.call(node, 'srcset')
         var rewrittenSrcset = rewriteSrcset(srcset, resolve)
         if (rewrittenSrcset !== srcset) nativeSetAttribute.call(node, 'srcset', rewrittenSrcset)
       }
       if (node.hasAttribute('style')) {
-        var style = node.getAttribute('style')
+        var style = nativeGetAttribute.call(node, 'style')
         var rewrittenStyle = rewriteCssValue(style, resolve)
         if (rewrittenStyle !== style) nativeSetAttribute.call(node, 'style', rewrittenStyle)
+        markStyle(node)
       }
-      if (node.tagName === 'STYLE' && node.textContent) {
-        var css = rewriteCssValue(node.textContent, resolve)
-        if (css !== node.textContent) node.textContent = css
+      if (nodeTagName === 'STYLE' && node.textContent) {
+        var styleText = nativeTextContentDescriptor
+          ? nativeTextContentDescriptor.get.call(node)
+          : node.textContent
+        var css = rewriteCssValue(styleText, resolve)
+        if (css !== styleText) {
+          if (nativeTextContentDescriptor) nativeTextContentDescriptor.set.call(node, css)
+          else node.textContent = css
+        }
       }
       return node
     }
@@ -540,11 +642,60 @@
 
     var NodePrototype = target.Node && target.Node.prototype
     if (NodePrototype) {
+      nativeTextContentDescriptor = Object.getOwnPropertyDescriptor(NodePrototype, 'textContent')
+      if (nativeTextContentDescriptor && nativeTextContentDescriptor.get && nativeTextContentDescriptor.set && nativeTextContentDescriptor.configurable !== false) {
+        Object.defineProperty(NodePrototype, 'textContent', {
+          configurable: nativeTextContentDescriptor.configurable,
+          enumerable: nativeTextContentDescriptor.enumerable,
+          get: function () {
+            var value = nativeTextContentDescriptor.get.call(this)
+            return tagName(this) === 'STYLE' ? restore(value) : value
+          },
+          set: function (value) {
+            if (tagName(this) === 'STYLE') value = rewriteCssValue(value, resolve)
+            nativeTextContentDescriptor.set.call(this, value)
+          },
+        })
+      }
+
       var nativeAppendChild = NodePrototype.appendChild
       var nativeInsertBefore = NodePrototype.insertBefore
+      var nativeReplaceChild = NodePrototype.replaceChild
       NodePrototype.appendChild = function (node) { return nativeAppendChild.call(this, rewriteNode(node)) }
       NodePrototype.insertBefore = function (node, reference) {
         return nativeInsertBefore.call(this, rewriteNode(node), reference)
+      }
+      if (nativeReplaceChild) {
+        NodePrototype.replaceChild = function (node, child) {
+          return nativeReplaceChild.call(this, rewriteNode(node), child)
+        }
+      }
+    }
+
+    function patchNodeInsertion(ctor, methods) {
+      if (!ctor || !ctor.prototype) return
+      methods.forEach(function (method) {
+        var nativeMethod = ctor.prototype[method]
+        if (!nativeMethod) return
+        ctor.prototype[method] = function () {
+          var args = Array.prototype.slice.call(arguments).map(function (value) {
+            return value && typeof value === 'object' && typeof value.nodeType === 'number'
+              ? rewriteNode(value)
+              : value
+          })
+          return nativeMethod.apply(this, args)
+        }
+      })
+    }
+
+    patchNodeInsertion(target.Element, ['append', 'prepend', 'before', 'after', 'replaceWith', 'replaceChildren'])
+    patchNodeInsertion(target.Document, ['append', 'prepend', 'replaceChildren'])
+    patchNodeInsertion(target.DocumentFragment, ['append', 'prepend', 'replaceChildren'])
+
+    var nativeInsertAdjacentElement = ElementPrototype.insertAdjacentElement
+    if (nativeInsertAdjacentElement) {
+      ElementPrototype.insertAdjacentElement = function (position, element) {
+        return nativeInsertAdjacentElement.call(this, position, rewriteNode(element))
       }
     }
 
@@ -553,9 +704,9 @@
         records.forEach(function (record) {
           if (record.type === 'childList') {
             record.addedNodes.forEach(rewriteNode)
-            if (record.target && record.target.tagName === 'STYLE') rewriteElement(record.target)
+            if (record.target && tagName(record.target) === 'STYLE') rewriteElement(record.target)
           } else if (record.type === 'attributes') rewriteElement(record.target)
-          else if (record.type === 'characterData' && record.target.parentNode && record.target.parentNode.tagName === 'STYLE') {
+          else if (record.type === 'characterData' && record.target.parentNode && tagName(record.target.parentNode) === 'STYLE') {
             rewriteElement(record.target.parentNode)
           }
         })
@@ -580,7 +731,6 @@
     var restore = typeof vfs.restoreObjectUrls === 'function'
       ? function (value) { return typeof value === 'string' ? vfs.restoreObjectUrls(value) : value }
       : function (value) { return value }
-
     var nativeCss = $.fn.css
     $.fn.css = function (name, value) {
       if (typeof name === 'object' && name) {
@@ -588,9 +738,19 @@
         Object.keys(name).forEach(function (key) { copy[key] = rewriteCssValue(name[key], resolve) })
         return nativeCss.call(this, copy)
       }
-      if (arguments.length === 1) return restore(nativeCss.call(this, name))
+      if (arguments.length === 1) return nativeCss.call(this, name)
       if (arguments.length > 1) value = rewriteCssValue(value, resolve)
       return nativeCss.call(this, name, value)
+    }
+
+    var nativeAttr = $.fn.attr
+    if (nativeAttr) {
+      $.fn.attr = function (name) {
+        var value = nativeAttr.apply(this, arguments)
+        return arguments.length === 1 && typeof name === 'string' && isRestorableAttribute(this[0], name)
+          ? restore(value)
+          : value
+      }
     }
 
     ;['html', 'append', 'prepend', 'before', 'after'].forEach(function (method) {

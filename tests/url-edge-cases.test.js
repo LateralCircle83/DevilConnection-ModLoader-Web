@@ -210,11 +210,15 @@ function testRuntimeStyleReadCompatibility() {
 
   loadRuntime().install(target, resolver)
   const style = new StyleDeclaration()
+  const computedStyle = new StyleDeclaration()
+  rawValues.get(computedStyle).backgroundImage = 'url("' + blobUrl + '")'
   style.backgroundImage = 'url("' + logicalUrl + '")'
 
   assert.equal(rawValues.get(style).backgroundImage, 'url("' + blobUrl + '")')
   assert.equal(style.backgroundImage, 'url("' + logicalUrl + '")')
   assert.equal(style.getPropertyValue('backgroundImage'), 'url("' + logicalUrl + '")')
+  assert.equal(computedStyle.backgroundImage, 'url("' + blobUrl + '")')
+  assert.equal(computedStyle.getPropertyValue('backgroundImage'), 'url("' + blobUrl + '")')
 }
 
 function testRuntimeDynamicStylePropertyCompatibility() {
@@ -233,17 +237,235 @@ function testRuntimeDynamicStylePropertyCompatibility() {
   const blobUrl = 'blob:http://127.0.0.1:4173/dynamic-title-button'
   const target = { CSSStyleDeclaration: DynamicStyleDeclaration, Element }
   const resolver = {
-    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
-    has(value) { return value === logicalUrl },
+    getObjectUrl(value) {
+      const fragment = value.includes('#') ? value.slice(value.indexOf('#')) : ''
+      return value.split('#', 1)[0] === logicalUrl ? blobUrl + fragment : value
+    },
+    has(value) { return value.split('#', 1)[0] === logicalUrl },
     restoreObjectUrls(value) { return String(value).split(blobUrl).join(logicalUrl) },
   }
 
   loadRuntime().install(target, resolver)
   const style = new DynamicStyleDeclaration()
   style.backgroundImage = 'url("' + logicalUrl + '")'
+  style.filter = 'url("' + logicalUrl + '#blur")'
+  style.clipPath = 'url("' + logicalUrl + '#clip")'
+  style.borderImageSource = 'url("' + logicalUrl + '")'
 
   assert.equal(rawValues.get(style)['background-image'], 'url("' + blobUrl + '")')
   assert.equal(style.backgroundImage, 'url("' + logicalUrl + '")')
+  assert.equal(rawValues.get(style).filter, 'url("' + blobUrl + '#blur")')
+  assert.equal(style.filter, 'url("' + logicalUrl + '#blur")')
+  assert.equal(rawValues.get(style)['clip-path'], 'url("' + blobUrl + '#clip")')
+  assert.equal(style.clipPath, 'url("' + logicalUrl + '#clip")')
+  assert.equal(rawValues.get(style)['border-image-source'], 'url("' + blobUrl + '")')
+  assert.equal(style.borderImageSource, 'url("' + logicalUrl + '")')
+}
+
+function testRuntimeAttributeAndMarkupReadCompatibility() {
+  const attributes = new WeakMap()
+  const markup = new WeakMap()
+
+  function Element(tag) {
+    this.tagName = tag
+    attributes.set(this, new Map())
+    markup.set(this, { innerHTML: '', outerHTML: '' })
+  }
+  Element.prototype.setAttribute = function (name, value) { attributes.get(this).set(name, String(value)) }
+  Element.prototype.getAttribute = function (name) {
+    const values = attributes.get(this)
+    return values.has(name) ? values.get(name) : null
+  }
+  Element.prototype.setAttributeNS = function (namespace, name, value) { this.setAttribute(name, value) }
+  Element.prototype.getAttributeNS = function (namespace, name) { return this.getAttribute(name) }
+  ;['innerHTML', 'outerHTML'].forEach(function (property) {
+    Object.defineProperty(Element.prototype, property, {
+      configurable: true,
+      enumerable: true,
+      get() { return markup.get(this)[property] },
+      set(value) { markup.get(this)[property] = String(value) },
+    })
+  })
+
+  function ImageElement() {
+    Element.call(this, 'IMG')
+  }
+  ImageElement.prototype = Object.create(Element.prototype)
+  ImageElement.prototype.constructor = ImageElement
+  Object.defineProperty(ImageElement.prototype, 'src', {
+    configurable: true,
+    enumerable: true,
+    get() { return attributes.get(this).get('src') || '' },
+    set(value) { attributes.get(this).set('src', String(value)) },
+  })
+
+  const logicalUrl = 'data/image/menu_Title/collection__.png'
+  const blobUrl = 'blob:http://127.0.0.1:4173/title-attribute'
+  const target = { Element, HTMLImageElement: ImageElement }
+  const resolver = {
+    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
+    has(value) { return value === logicalUrl },
+    restoreObjectUrls(value) { return String(value).split(blobUrl).join(logicalUrl) },
+  }
+
+  loadRuntime().install(target, resolver)
+  const image = new ImageElement()
+  image.src = logicalUrl
+  assert.equal(attributes.get(image).get('src'), blobUrl)
+  assert.equal(image.getAttribute('src'), logicalUrl)
+  assert.equal(image.src, blobUrl)
+
+  const link = new Element('LINK')
+  link.setAttribute('href', logicalUrl)
+  assert.equal(attributes.get(link).get('href'), blobUrl)
+  assert.equal(link.getAttribute('href'), logicalUrl)
+
+  const anchor = new Element('A')
+  anchor.setAttribute('href', logicalUrl)
+  assert.equal(attributes.get(anchor).get('href'), logicalUrl)
+
+  const svgImage = new Element('image')
+  svgImage.setAttributeNS('http://www.w3.org/1999/xlink', 'href', logicalUrl)
+  assert.equal(attributes.get(svgImage).get('href'), blobUrl)
+  assert.equal(svgImage.getAttributeNS('http://www.w3.org/1999/xlink', 'href'), logicalUrl)
+
+  const container = new Element('DIV')
+  container.innerHTML = '<img src="' + logicalUrl + '">'
+  assert.equal(markup.get(container).innerHTML, '<img src="' + blobUrl + '">')
+  assert.equal(container.innerHTML, '<img src="' + logicalUrl + '">')
+}
+
+function testJQueryAttributeReadCompatibility() {
+  const logicalUrl = 'data/image/menu_Title/collection__.png'
+  const blobUrl = 'blob:http://127.0.0.1:4173/jquery-title-attribute'
+  const element = { tagName: 'IMG', values: { src: blobUrl } }
+
+  function JQuery(items) {
+    this[0] = items[0]
+    this.length = items.length
+  }
+  JQuery.prototype.attr = function (name, value) {
+    if (arguments.length === 1) return this[0].values[name]
+    this[0].values[name] = value
+    return this
+  }
+  JQuery.prototype.css = function () { return this }
+  const $ = function (item) { return new JQuery([item]) }
+  $.fn = JQuery.prototype
+
+  const resolver = {
+    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
+    has(value) { return value === logicalUrl },
+    restoreObjectUrls(value) { return String(value).split(blobUrl).join(logicalUrl) },
+  }
+  loadRuntime().installJQuery({ jQuery: $ }, resolver)
+
+  assert.equal($(element).attr('src'), logicalUrl)
+  assert.equal($(element).attr('title'), undefined)
+}
+
+function testRuntimeInsertionRewritesBeforeNativeCall() {
+  const calls = []
+
+  function Element(tag) {
+    this.tagName = tag || 'DIV'
+    this.nodeType = 1
+    this.attributes = new Map()
+  }
+  Element.prototype.setAttribute = function (name, value) { this.attributes.set(name, String(value)) }
+  Element.prototype.getAttribute = function (name) { return this.attributes.has(name) ? this.attributes.get(name) : null }
+  Element.prototype.hasAttribute = function (name) { return this.attributes.has(name) }
+  Element.prototype.querySelectorAll = function () { return [] }
+  Element.prototype.append = function (node) { calls.push(['append', node.attributes.get('src')]) }
+  Element.prototype.insertAdjacentElement = function (position, node) {
+    calls.push(['insertAdjacentElement', node.attributes.get('src')])
+  }
+
+  function Node() {}
+  Node.prototype.appendChild = function (node) { calls.push(['appendChild', node.attributes.get('src')]); return node }
+  Node.prototype.insertBefore = function (node) { calls.push(['insertBefore', node.attributes.get('src')]); return node }
+  Node.prototype.replaceChild = function (node) { calls.push(['replaceChild', node.attributes.get('src')]); return node }
+
+  const logicalUrl = 'data/image/inserted.png'
+  const blobUrl = 'blob:http://127.0.0.1:4173/inserted'
+  const target = { Element, Node }
+  const resolver = {
+    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
+    has(value) { return value === logicalUrl },
+    restoreObjectUrls(value) { return String(value).split(blobUrl).join(logicalUrl) },
+  }
+  loadRuntime().install(target, resolver)
+
+  const parent = new Element('DIV')
+  const createImage = function () {
+    const image = new Element('IMG')
+    image.attributes.set('src', logicalUrl)
+    return image
+  }
+  parent.append(createImage())
+  parent.insertAdjacentElement('beforeend', createImage())
+  Node.prototype.appendChild.call(parent, createImage())
+  Node.prototype.insertBefore.call(parent, createImage(), null)
+  Node.prototype.replaceChild.call(parent, createImage(), null)
+
+  assert.deepEqual(calls, [
+    ['append', blobUrl],
+    ['insertAdjacentElement', blobUrl],
+    ['appendChild', blobUrl],
+    ['insertBefore', blobUrl],
+    ['replaceChild', blobUrl],
+  ])
+}
+
+function testRuntimeStyleTextRewritesBeforeInsertion() {
+  const textContent = new WeakMap()
+
+  function Node() {}
+  Object.defineProperty(Node.prototype, 'textContent', {
+    configurable: true,
+    enumerable: true,
+    get() { return textContent.get(this) || '' },
+    set(value) { textContent.set(this, String(value)) },
+  })
+  Node.prototype.appendChild = function (node) { return node }
+  Node.prototype.insertBefore = function (node) { return node }
+
+  function Element(tag) {
+    this.tagName = tag || 'DIV'
+    this.nodeType = 1
+  }
+  Element.prototype = Object.create(Node.prototype)
+  Element.prototype.constructor = Element
+  Element.prototype.setAttribute = function () {}
+  Element.prototype.getAttribute = function () { return null }
+  Element.prototype.hasAttribute = function () { return false }
+  Element.prototype.querySelectorAll = function () { return [] }
+
+  const logicalUrl = './data/image/cursor3.png'
+  const blobUrl = 'blob:http://127.0.0.1:4173/cursor3'
+  const target = { Element, Node }
+  const resolver = {
+    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
+    has(value) { return value === logicalUrl },
+    restoreObjectUrls(value) { return String(value).split(blobUrl).join(logicalUrl) },
+  }
+
+  loadRuntime().install(target, resolver)
+  const style = new Element('STYLE')
+  style.textContent = '.item{cursor:url("' + logicalUrl + '") 6 1,pointer}'
+
+  assert.equal(
+    textContent.get(style),
+    '.item{cursor:url("' + blobUrl + '") 6 1,pointer}',
+  )
+  assert.equal(
+    style.textContent,
+    '.item{cursor:url("' + logicalUrl + '") 6 1,pointer}',
+  )
+
+  const ordinaryNode = new Element('DIV')
+  ordinaryNode.textContent = 'blob URLs in ordinary text stay untouched: ' + blobUrl
+  assert.equal(ordinaryNode.textContent, 'blob URLs in ordinary text stay untouched: ' + blobUrl)
 }
 
 async function main() {
@@ -254,6 +476,10 @@ async function main() {
   testRuntimeRewriters()
   testRuntimeStyleReadCompatibility()
   testRuntimeDynamicStylePropertyCompatibility()
+  testRuntimeAttributeAndMarkupReadCompatibility()
+  testJQueryAttributeReadCompatibility()
+  testRuntimeInsertionRewritesBeforeNativeCall()
+  testRuntimeStyleTextRewritesBeforeInsertion()
   testPublicContracts()
   console.log('URL edge-case tests passed')
 }
