@@ -6,6 +6,8 @@
 
 ### 新增
 
+- 根据模组 `config.schema.json` 生成配置表单，支持 `text`、`password`、`number`、`toggle` 和 `select` 字段。
+- 统一管理器、`ModLoader`、`electronAPI`、`fs` 与 `window.api` 的 DCML 配置路径映射，使模组无需为 Web 壳单独适配。
 - 新增本地 DCML 模组 ASAR 导入、启停、移除及载入顺序调整。
 - 按“游戏本体 → 模组列表由上到下”的顺序建立分层 VFS，后载入模组覆盖先载入内容。
 - 支持标准 Electron ASAR 与旧 DCML 模组使用的兼容头布局。

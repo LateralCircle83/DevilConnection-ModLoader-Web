@@ -32,11 +32,13 @@
     this.view.bind({
       addMods: function (files) { controller.addMods(files) },
       close: function () { controller.close() },
+      configureMod: function (id) { controller.configureMod(id) },
       isBusy: function () { return controller.busy },
       loadCore: function (file) { controller.loadCore(file) },
       moveMod: function (id, delta) { controller.moveMod(id, delta) },
       reload: function () { controller.reload() },
       removeMod: function (id) { controller.removeMod(id) },
+      saveModConfig: function (id, value) { controller.saveModConfig(id, value) },
       start: function () { controller.start() },
       toggleMod: function (id, enabled) { controller.toggleMod(id, enabled) },
     })
@@ -229,6 +231,67 @@
 
   PlayerController.prototype.findModIndex = function (id) {
     return this.mods.findIndex(function (mod) { return mod.id === id })
+  }
+
+  PlayerController.prototype.configureMod = function (id) {
+    if (this.busy || this.activeSession) return
+    var index = this.findModIndex(id)
+    var mod = index === -1 ? null : this.mods[index]
+    if (!mod || !mod.configSchema) return
+    var saved = DCWeb.ModConfigStore.readJson(global, mod.configName) || {}
+    this.view.openModConfig({
+      configName: mod.configName,
+      id: mod.id,
+      name: mod.name,
+      schema: mod.configSchema,
+    }, saved)
+  }
+
+  PlayerController.prototype.normalizeModConfig = function (schema, input) {
+    var output = {}
+    ;(schema.fields || []).forEach(function (field) {
+      if (!field || !field.key) return
+      var value = Object.prototype.hasOwnProperty.call(input, field.key) ? input[field.key] : field.default
+      if (field.required && field.type !== 'toggle' && (value === undefined || value === null || String(value).trim() === '')) {
+        throw new Error((field.label || field.key) + '不能为空')
+      }
+      if (field.type === 'toggle') value = Boolean(value)
+      else if (field.type === 'number') {
+        value = Number(value)
+        if (!Number.isFinite(value)) value = Number(field.default) || 0
+        if (Number.isFinite(Number(field.min))) value = Math.max(value, Number(field.min))
+        if (Number.isFinite(Number(field.max))) value = Math.min(value, Number(field.max))
+      } else value = value === undefined || value === null ? '' : String(value)
+      output[field.key] = value
+    })
+    return output
+  }
+
+  PlayerController.prototype.saveModConfig = async function (id, input) {
+    if (this.busy || this.activeSession) return
+    var index = this.findModIndex(id)
+    var mod = index === -1 ? null : this.mods[index]
+    if (!mod || !mod.configSchema) return
+    var value
+    try {
+      value = this.normalizeModConfig(mod.configSchema, input || {})
+      DCWeb.ModConfigStore.writeJson(global, mod.configName, value)
+    } catch (error) {
+      this.view.showModConfigError(error && error.message ? error.message : String(error))
+      return
+    }
+
+    this.view.closeModConfig()
+    this.view.setStatus('已保存 ' + mod.name + ' 的配置', 'ready')
+    if (!this.baseGame) return
+    this.setBusy(true)
+    try {
+      await this.prepareLaunch()
+    } catch (error) {
+      this.view.showError(error)
+    } finally {
+      this.setBusy(false)
+    }
   }
 
   PlayerController.prototype.updateModSelection = async function (change) {

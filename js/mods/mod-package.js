@@ -29,17 +29,19 @@
     return String(value)
   }
 
-  function ModPackage(file, archive, manifest, fallbackIndex) {
+  function ModPackage(file, archive, manifest, schema, fallbackIndex) {
     this.file = file
     this.archive = archive
     this.manifest = manifest
+    this.configName = DCWeb.ModConfigStore.bareName(file.name)
+    this.configSchema = schema
     this.id = cleanId(manifest.id || file.name, fallbackIndex)
     this.name = textValue(manifest.name, file.name.replace(/\.asar$/i, ''))
     this.description = textValue(manifest.description, '本地导入的 DCML 模组')
     this.version = textValue(manifest.displayVersion, textValue(manifest.version, '--'))
     this.enabled = true
     this.hasHook = archive.has('hook.js')
-    this.hasConfig = archive.has('config.schema.json')
+    this.hasConfig = Boolean(schema)
     this.textFiles = new Map()
     this.runtimeReady = null
   }
@@ -48,6 +50,7 @@
     if (!file || !/\.asar$/i.test(file.name || '')) throw new Error('请选择 .asar 模组文件')
     var archive = await DCWeb.AsarArchive.open(file)
     var manifest = {}
+    var schema = null
     if (archive.has('mods.json')) {
       try {
         manifest = JSON.parse((await archive.readText('mods.json')).replace(/^\uFEFF/, ''))
@@ -58,7 +61,19 @@
         throw new Error(file.name + ' 的 mods.json 格式无效')
       }
     }
-    return new ModPackage(file, archive, manifest, fallbackIndex || 1)
+    if (archive.has('config.schema.json')) {
+      try {
+        var candidate = JSON.parse((await archive.readText('config.schema.json')).replace(/^\uFEFF/, ''))
+        if (candidate && !Array.isArray(candidate) && typeof candidate === 'object' && Array.isArray(candidate.fields)) {
+          schema = candidate
+        }
+      } catch (error) {
+        if (global.console && global.console.warn) {
+          global.console.warn('[DC mod config] ' + file.name + ' 的 config.schema.json 无法解析', error)
+        }
+      }
+    }
+    return new ModPackage(file, archive, manifest, schema, fallbackIndex || 1)
   }
 
   ModPackage.prototype.prepareRuntime = function () {
@@ -94,6 +109,7 @@
   ModPackage.prototype.toViewModel = function () {
     return {
       description: this.description,
+      configName: this.configName,
       enabled: this.enabled,
       fileName: this.file.name,
       hasConfig: this.hasConfig,

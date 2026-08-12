@@ -7,6 +7,7 @@
     if (target.api && target.api.__dcBrowserApi) return target.api
 
     var storage = DCWeb.BrowserSaveStore.create(target)
+    var configStore = DCWeb.ModConfigStore
     var binaryDebug = { pending: 0, completed: 0, failed: 0 }
 
     function publishBinaryDebug(path, error) {
@@ -51,12 +52,29 @@
         return Promise.resolve(itemPath || filePath || '')
       },
 
-      existFile: function (path) { return storage.getItem('file:' + path) !== null },
+      existFile: function (path) {
+        var configName = configStore.nameFromPath(path)
+        return configName ? configStore.readRaw(target, configName) !== null : storage.getItem('file:' + path) !== null
+      },
       makeDir: function () {},
-      writeFile: function (path, value) { storage.setItem('file:' + path, value) },
-      writeFileEnc: function (path, value) { storage.setItem('file:' + path, value) },
-      readFile: function (path) { return storage.getItem('file:' + path) || '' },
-      readFileDec: function (path) { return storage.getItem('file:' + path) || '' },
+      writeFile: function (path, value) {
+        var configName = configStore.nameFromPath(path)
+        if (configName) configStore.writeRaw(target, configName, value)
+        else storage.setItem('file:' + path, value)
+      },
+      writeFileEnc: function (path, value) {
+        var configName = configStore.nameFromPath(path)
+        if (configName) configStore.writeRaw(target, configName, value)
+        else storage.setItem('file:' + path, value)
+      },
+      readFile: function (path) {
+        var configName = configStore.nameFromPath(path)
+        return (configName ? configStore.readRaw(target, configName) : storage.getItem('file:' + path)) || ''
+      },
+      readFileDec: function (path) {
+        var configName = configStore.nameFromPath(path)
+        return (configName ? configStore.readRaw(target, configName) : storage.getItem('file:' + path)) || ''
+      },
       readFileBin: function (path) {
         binaryDebug.pending++
         publishBinaryDebug(path, null)
@@ -83,8 +101,16 @@
           throw error
         })
       },
-      rm: function (path) { storage.removeItem('file:' + path) },
-      unlink: function (path) { storage.removeItem('file:' + path) },
+      rm: function (path) {
+        var configName = configStore.nameFromPath(path)
+        if (configName) configStore.remove(target, configName)
+        else storage.removeItem('file:' + path)
+      },
+      unlink: function (path) {
+        var configName = configStore.nameFromPath(path)
+        if (configName) configStore.remove(target, configName)
+        else storage.removeItem('file:' + path)
+      },
 
       saveFile: async function (param) {
         var link = target.document.createElement('a')

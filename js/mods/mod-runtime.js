@@ -3,6 +3,7 @@
 
   var DCWeb = global.DCWeb
   var Path = DCWeb.ResourcePath
+  var ConfigStore = DCWeb.ModConfigStore
 
   function joinPath() {
     var segments = []
@@ -26,8 +27,7 @@
   }
 
   function configKey(path) {
-    var match = String(path || '').replace(/\\/g, '/').match(/plugins\/config\/([^/]+)\.json$/i)
-    return match ? 'mod_config_' + match[1] : ''
+    return ConfigStore.nameFromPath(path)
   }
 
   function install(target, plan, resolver) {
@@ -47,14 +47,11 @@
     }
 
     function getModConfig(modId) {
-      try {
-        var raw = target.localStorage.getItem('mod_config_' + modId)
-        return raw ? JSON.parse(raw) : null
-      } catch (error) { return null }
+      return ConfigStore.readJson(target, modId)
     }
 
     function setModConfig(modId, value) {
-      try { target.localStorage.setItem('mod_config_' + modId, JSON.stringify(value)) } catch (error) {
+      try { ConfigStore.writeJson(target, modId, value) } catch (error) {
         target.console.warn('[DC mod config]', modId, error)
       }
     }
@@ -96,9 +93,9 @@
     loader.tryResolveURL = loader.resolveURL
 
     function readSync(path) {
-      var key = configKey(path)
-      if (key) {
-        try { return target.localStorage.getItem(key) || '' } catch (error) { return '' }
+      var configName = configKey(path)
+      if (configName) {
+        return ConfigStore.readRaw(target, configName) || ''
       }
       var text = getText(path)
       if (text !== null) return text
@@ -106,17 +103,17 @@
     }
 
     function existsSync(path) {
-      var key = configKey(path)
-      if (key) {
-        try { return target.localStorage.getItem(key) !== null } catch (error) { return false }
+      var configName = configKey(path)
+      if (configName) {
+        return ConfigStore.readRaw(target, configName) !== null
       }
       return getText(path) !== null || resolver.has(path)
     }
 
     function writeSync(path, value) {
-      var key = configKey(path)
-      if (!key) throw new Error('Mod compatibility writes are limited to plugins/config/*.json')
-      target.localStorage.setItem(key, String(value))
+      var configName = configKey(path)
+      if (!configName) throw new Error('Mod compatibility writes are limited to plugins/config/*.json')
+      ConfigStore.writeRaw(target, configName, value)
     }
 
     var fileSystem = {

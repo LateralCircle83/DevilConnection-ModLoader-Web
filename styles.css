@@ -27,7 +27,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
   letter-spacing: 0;
 }
@@ -558,6 +559,179 @@ p {
   line-height: 1.55;
 }
 
+.config-dialog {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  padding: 24px;
+  background: rgba(24, 28, 25, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.config-dialog[hidden] {
+  display: none;
+}
+
+.config-dialog-shell {
+  width: min(680px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid #9ba59e;
+  border-radius: 7px;
+  background: #f7f9f7;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.config-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #cbd2cd;
+}
+
+.config-dialog-header h2 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.config-dialog-close {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid #adb6b0;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 26px;
+  line-height: 1;
+}
+
+.config-dialog-close:hover,
+.config-dialog-close:focus-visible {
+  border-color: #202421;
+  outline: none;
+}
+
+.config-dialog-description {
+  margin: 18px 0 0;
+  color: #59615c;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.config-fields {
+  display: grid;
+  gap: 20px;
+  padding: 22px 0;
+}
+
+.config-field {
+  display: grid;
+  gap: 8px;
+}
+
+.config-label {
+  color: #303632;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.config-input {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #aeb7b1;
+  border-radius: 4px;
+  color: #202421;
+  background: #ffffff;
+}
+
+.config-input:focus {
+  border-color: #146b4c;
+  outline: 2px solid rgba(20, 107, 76, 0.14);
+}
+
+.config-toggle {
+  display: inline-flex;
+  width: max-content;
+  align-items: center;
+  gap: 9px;
+  color: #4f5752;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.config-toggle input {
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  accent-color: #146b4c;
+}
+
+.config-help {
+  margin: 0;
+  color: #747c77;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.config-error {
+  margin: 0 0 18px;
+  padding: 10px 12px;
+  border-left: 3px solid #a53b3b;
+  color: #862a2a;
+  background: #f8eaea;
+  font-size: 12px;
+}
+
+.config-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding-top: 18px;
+  border-top: 1px solid #cbd2cd;
+}
+
+.config-action {
+  min-height: 40px;
+  padding: 8px 15px;
+  border: 1px solid #9ea8a1;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.config-action:hover,
+.config-action:focus-visible {
+  border-color: #202421;
+  outline: none;
+}
+
+.config-action.is-primary {
+  border-color: #146b4c;
+  color: #ffffff;
+  background: #146b4c;
+}
+
+.config-action.is-primary:hover,
+.config-action.is-primary:focus-visible {
+  border-color: #0b4d36;
+  background: #0f5d42;
+}
+
 .progress-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
@@ -993,6 +1167,25 @@ p {
 
   .mod-toggle {
     margin-right: auto;
+  }
+
+  .config-dialog {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .config-dialog-shell {
+    width: 100%;
+    min-height: 100%;
+    max-height: none;
+    padding: 18px 14px;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .config-dialog-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .player-menu {

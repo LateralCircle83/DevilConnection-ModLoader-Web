@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
     <title>Devil Connection Web Shell</title>
-    <link rel="stylesheet" href="./styles.css?v=20260811b" />
+    <link rel="stylesheet" href="./styles.css?v=20260812a" />
     <script defer src="./js/core/namespace.js"></script>
     <script defer src="./js/core/resource-path.js"></script>
     <script defer src="./js/archive/asar-archive.js"></script>
@@ -13,19 +13,20 @@
     <script defer src="./js/assets/object-url-registry.js"></script>
     <script defer src="./js/assets/style-processor.js"></script>
     <script defer src="./js/assets/asset-resolver.js"></script>
-    <script defer src="./js/mods/mod-package.js"></script>
+    <script defer src="./js/mods/mod-config-store.js"></script>
+    <script defer src="./js/mods/mod-package.js?v=20260812a"></script>
     <script defer src="./js/mods/mod-plan.js"></script>
     <script defer src="./js/runtime/resource-rewriter.js"></script>
     <script defer src="./js/runtime/browser-runtime.js?v=20260812d"></script>
     <script defer src="./js/storage/browser-save-store.js"></script>
-    <script defer src="./js/compat/browser-api.js?v=20260811b"></script>
+    <script defer src="./js/compat/browser-api.js?v=20260812a"></script>
     <script defer src="./js/compat/tyrano-save-adapter.js"></script>
-    <script defer src="./js/mods/mod-runtime.js?v=20260811c"></script>
+    <script defer src="./js/mods/mod-runtime.js?v=20260812a"></script>
     <script defer src="./js/compat/tyrano-adapter.js?v=20260811c"></script>
     <script defer src="./js/game/devil-connection-profile.js"></script>
     <script defer src="./js/game/game-document.js?v=20260811b"></script>
-    <script defer src="./js/ui/shell-view.js?v=20260811b"></script>
-    <script defer src="./js/player/player-controller.js?v=20260811b"></script>
+    <script defer src="./js/ui/shell-view.js?v=20260812a"></script>
+    <script defer src="./js/player/player-controller.js?v=20260812a"></script>
     <script defer src="./js/app.js"></script>
   </head>
   <body>
@@ -175,6 +176,25 @@
         </section>
       </section>
     </main>
+
+    <div id="mod-config-dialog" class="config-dialog" role="dialog" aria-modal="true" aria-labelledby="mod-config-title" hidden>
+      <form id="mod-config-form" class="config-dialog-shell">
+        <header class="config-dialog-header">
+          <div>
+            <p class="section-kicker">MOD CONFIG</p>
+            <h2 id="mod-config-title">模组配置</h2>
+          </div>
+          <button id="close-mod-config" class="config-dialog-close" type="button" aria-label="关闭模组配置">&times;</button>
+        </header>
+        <p id="mod-config-description" class="config-dialog-description" hidden></p>
+        <div id="mod-config-fields" class="config-fields"></div>
+        <p id="mod-config-error" class="config-error" role="alert" hidden></p>
+        <footer class="config-dialog-actions">
+          <button id="cancel-mod-config" class="config-action" type="button">取消</button>
+          <button class="config-action is-primary" type="submit">保存配置</button>
+        </footer>
+      </form>
+    </div>
 
     <section id="player-view" class="player-view" hidden>
       <button

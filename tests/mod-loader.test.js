@@ -10,6 +10,7 @@ require('../js/vfs/layered-vfs.js')
 require('../js/assets/object-url-registry.js')
 require('../js/assets/style-processor.js')
 require('../js/assets/asset-resolver.js')
+require('../js/mods/mod-config-store.js')
 require('../js/mods/mod-package.js')
 require('../js/mods/mod-plan.js')
 require('../js/mods/mod-runtime.js')
@@ -86,14 +87,31 @@ async function testPackageMetadata() {
       version: '1.2.3',
     }),
     'hook.js': 'window.exampleHook = true',
+    'config.schema.json': JSON.stringify({
+      title: 'Example config',
+      fields: [{ key: 'enabled', type: 'toggle', default: true }],
+    }),
   }, 'described.asar')
   const packageWithManifest = await ModPackage.open(described, 1)
   assert.equal(packageWithManifest.id, 'dc-example')
   assert.equal(packageWithManifest.name, 'Example Mod')
   assert.equal(packageWithManifest.hasHook, true)
+  assert.equal(packageWithManifest.hasConfig, true)
+  assert.equal(packageWithManifest.configName, 'described')
+  assert.equal(packageWithManifest.configSchema.fields[0].key, 'enabled')
 
   const fallback = await ModPackage.open(createAsar({ 'data/value.txt': 'ok' }, 'Fallback Name.asar'), 2)
   assert.equal(fallback.id, 'fallback-name')
+  const ordered = await ModPackage.open(createAsar({
+    'config.schema.json': JSON.stringify({ fields: [] }),
+  }, '005_dc_theatre.asar'), 3)
+  assert.equal(ordered.configName, 'dc_theatre')
+
+  const invalidSchema = await ModPackage.open(createAsar({
+    'config.schema.json': '{invalid',
+    'data/value.txt': 'still loads',
+  }, 'invalid-schema.asar'), 4)
+  assert.equal(invalidSchema.hasConfig, false)
   assert.equal(fallback.name, 'Fallback Name')
 }
 
@@ -146,6 +164,9 @@ async function testLoadOrderAndHooks() {
   assert.equal(target.Buffer.isBuffer(target.Buffer.from('b2s=', 'base64')), true)
   loader.setModConfig('first', { active: true })
   assert.deepEqual(loader.getModConfig('first'), { active: true })
+  assert.equal(target.electronAPI.readFileSync('plugins/config/first.json'), '{"active":true}')
+  target.electronAPI.writeFileSync('C:\\game\\plugins\\config\\first.json', '{"active":false}')
+  assert.deepEqual(loader.getModConfig('first'), { active: false })
   resolver.release()
 }
 

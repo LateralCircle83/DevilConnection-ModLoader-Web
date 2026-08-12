@@ -67,6 +67,7 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 - `js/assets/style-processor.js`: recursive CSS dependency preparation and URL rewriting.
 - `js/assets/asset-resolver.js`: facade joining VFS, prepared text, style processing, and URL lifetime.
 - `js/mods/mod-package.js`: read-only mod ASAR metadata, runtime text cache, and VFS layer projection.
+- `js/mods/mod-config-store.js`: canonical DCML config name/path mapping and shared localStorage JSON/raw access.
 - `js/mods/mod-plan.js`: immutable enabled package order, merged synchronous text view, and ordered hooks.
 - `js/mods/mod-runtime.js`: bounded DCML `ModLoader`, config, Node-like, and Electron hook compatibility inside the iframe.
 - `js/runtime/resource-rewriter.js`: pure CSS, markup, and srcset rewriting helpers.
@@ -115,6 +116,8 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - Hooks execute individually in package order; never read a merged `hook.js`, because that would execute only the last override.
 - Hooks may create body-level controls. Preserve the `DOMContentLoaded` execution boundary and keep the host ready handshake dependent on `ModRuntime.ready`.
 - Synchronous hook reads come from `ModPackage`'s text cache. Binary resources continue through `AssetResolver` and shared runtime interceptors.
+- Config binding follows the ASAR file bare name after removing an optional numeric load-order prefix, and the upstream `plugins/config/<bareName>.json` contract. Manager edits, `ModLoader`, `electronAPI`, `require('fs')`, and `window.api` must share `ModConfigStore`; do not invent a Web-only mod config API.
+- `config.schema.json` is manager-owned metadata. Render supported fields with DOM APIs, apply defaults only in the form, and persist small config JSON through the upstream-compatible `mod_config_<bareName>` localStorage key rather than the save database.
 - Keep compatibility bounded. Do not add arbitrary filesystem writes, remote catalog loading, base-ASAR mutation, or full-archive buffers.
 - Hook code is trusted renderer code. Preserve the visible trust warning and do not imply sandbox isolation.
 
@@ -135,6 +138,8 @@ Run after relevant changes:
 ```powershell
 node tests\url-edge-cases.test.js
 node tests\mod-loader.test.js
+node tests\mod-config.test.js
+node tests\mod-config-controller.test.js
 node tests\start-gate.test.js
 node tests\player-controller.test.js
 Get-ChildItem js -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
