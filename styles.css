@@ -266,6 +266,10 @@ p {
   transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
 }
 
+.launch-action[hidden] {
+  display: none;
+}
+
 .launch-action:hover,
 .launch-action:focus-visible {
   border-color: #202421;
@@ -290,6 +294,11 @@ p {
   cursor: not-allowed;
   opacity: 0.48;
   transform: none;
+}
+
+.source-restore {
+  grid-column: 1 / -1;
+  min-height: 72px;
 }
 
 .launch-action-symbol {

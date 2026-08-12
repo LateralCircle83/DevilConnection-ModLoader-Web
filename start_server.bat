@@ -15,7 +15,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Devil Connection Web Shell
+echo DevilConnection Modloader web
 echo URL: http://127.0.0.1:%PORT%/
 echo Press Ctrl+C to stop the temporary server.
 echo.

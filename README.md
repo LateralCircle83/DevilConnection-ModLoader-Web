@@ -1,4 +1,4 @@
-# Devil Connection Web Shell
+# DevilConnection Modloader web
 
 这是一个纯静态的浏览器运行壳，用来加载玩家自己拥有的《Devil Connection》游戏 `app.asar`。
 
@@ -9,6 +9,7 @@
 - 直接读取原版 `app.asar`，不向磁盘解包或修改归档
 - 在浏览器中运行 TyranoScript 游戏
 - 载入本地 DCML 模组 ASAR，并调整启用状态和覆盖顺序
+- 在支持本地文件句柄的浏览器中记住核心与模组选择
 - 兼容游戏需要的部分 Electron 接口
 - 使用 IndexedDB 保存游戏存档
 - 支持重新载入和退出当前游戏会话
@@ -51,7 +52,9 @@ start_server.bat 8080
 
 模组列表由上到下依次载入，越靠后的模组覆盖优先级越高。若多个模组和游戏本体含有同一路径，游戏会使用列表中最靠后的启用模组版本。
 
-模组顺序在点击“开始游戏”时固定。若要调整本次会话使用的模组，请先退出游戏再修改列表。页面刷新后需要重新选择本地文件。
+模组顺序在点击“开始游戏”时固定。若要调整本次会话使用的模组，请先退出游戏再修改列表。
+
+在支持 File System Access API 的 Chrome、Edge 等浏览器中，页面会记住核心归档、模组顺序和启用状态。刷新后若读取权限仍有效会自动恢复；浏览器要求重新确认权限时，点击“恢复上次选择”即可。项目只保存浏览器提供的本地文件句柄，不会把 ASAR 内容复制到 IndexedDB。移动或删除原文件、清除站点数据、更换地址或使用不支持该接口的浏览器后，需要重新选择文件。
 
 带有 `hook.js` 的模组会在游戏页面中执行代码，请只载入可信来源的文件。带有 `config.schema.json` 的模组可在模组列表中打开配置表单；配置保存在当前浏览器来源中，并按原 DCML `plugins/config/<模组文件名>.json` 约定提供给模组读取。存档仍不会记录使用过的模组组合。
 
@@ -68,6 +71,7 @@ start_server.bat 8080
 ## 隐私与游戏文件
 
 - `app.asar` 只由当前浏览器页面在本地读取。
+- 选择持久化只保存浏览器授予的文件句柄引用，不保存或上传归档内容。
 - 项目没有上传接口，也不需要远程后端。
 - 游戏文件不会被提取到项目目录。
 - 关闭游戏会话后，页面会释放创建过的临时资源地址。
@@ -80,7 +84,8 @@ start_server.bat 8080
 ## 已知限制
 
 - 当前只支持《Devil Connection》原版游戏归档。
-- 模组选择和顺序不会跨页面刷新保存；模组配置会保留在当前浏览器来源中，更换地址、端口或浏览器后不会自动迁移。
+- 本地 ASAR 选择恢复依赖 File System Access API；不支持该接口的浏览器仍需在刷新后重新选择文件。
+- 模组配置会保留在当前浏览器来源中，更换地址、端口或浏览器后不会自动迁移。
 - 存档不会绑定或校验创建它时使用的模组组合。
 - Steam 成就、原生窗口控制和 Electron 文件系统等桌面能力无法在普通网页中完整提供。
 - 浏览器兼容补丁针对目前验证过的游戏结构；游戏发行版发生较大变化后，可能需要更新适配层。
@@ -110,6 +115,9 @@ start_server.bat 8080
 ```console
 node tests/url-edge-cases.test.js
 node tests/mod-loader.test.js
+node tests/game-profile.test.js
+node tests/local-source-store.test.js
+node tests/source-restore-controller.test.js
 node tests/start-gate.test.js
 node tests/player-controller.test.js
 ```

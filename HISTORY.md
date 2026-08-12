@@ -6,6 +6,8 @@
 
 ### 新增
 
+- 使用 `favicon.ico` 作为站点图标，管理器标题调整为 `DevilConnection Modloader web`；游戏启动后改用最终资源层 `Config.tjs` 中的 `System.title`。
+- 在支持 File System Access API 的浏览器中持久化核心与模组文件句柄、加载顺序和启用状态，刷新后按权限状态自动恢复或请求用户重新授权，不复制 ASAR 内容。
 - 根据模组 `config.schema.json` 生成配置表单，支持 `text`、`password`、`number`、`toggle` 和 `select` 字段。
 - 统一管理器、`ModLoader`、`electronAPI`、`fs` 与 `window.api` 的 DCML 配置路径映射，使模组无需为 Web 壳单独适配。
 - 新增本地 DCML 模组 ASAR 导入、启停、移除及载入顺序调整。

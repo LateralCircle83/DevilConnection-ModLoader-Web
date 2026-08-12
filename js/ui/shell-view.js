@@ -26,6 +26,8 @@
     this.coreInput = doc.getElementById('core-asar-input')
     this.loadCoreButton = doc.getElementById('load-core-game')
     this.startButton = doc.getElementById('start-game')
+    this.restoreSourcesButton = doc.getElementById('restore-sources')
+    this.restoreSourcesDetail = doc.getElementById('restore-sources-detail')
     this.modInput = doc.getElementById('mod-asar-input')
     this.addModsButton = doc.getElementById('add-mods')
     this.modList = doc.getElementById('mod-list')
@@ -69,14 +71,15 @@
   ShellView.prototype.bind = function (handlers) {
     var view = this
     this.loadCoreButton.addEventListener('click', function () {
-      if (!handlers.isBusy()) view.coreInput.click()
+      if (!handlers.isBusy()) handlers.selectCore()
     })
     this.coreInput.addEventListener('change', function () {
       handlers.loadCore(view.coreInput.files && view.coreInput.files[0])
     })
     this.startButton.addEventListener('click', function () { handlers.start() })
+    this.restoreSourcesButton.addEventListener('click', function () { handlers.restoreSources(true) })
     this.addModsButton.addEventListener('click', function () {
-      if (!handlers.isBusy()) view.modInput.click()
+      if (!handlers.isBusy()) handlers.selectMods()
     })
     this.modInput.addEventListener('change', function () {
       handlers.addMods(Array.prototype.slice.call(view.modInput.files || []))
@@ -205,6 +208,7 @@
   ShellView.prototype.setBusy = function (value) {
     this.busy = value
     this.loadCoreButton.disabled = value
+    this.restoreSourcesButton.disabled = value
     this.coreInput.disabled = value
     this.addModsButton.disabled = value
     this.modInput.disabled = value
@@ -400,7 +404,9 @@
     }, this)
   }
 
-  ShellView.prototype.showPlayer = function (file, version, modCount) {
+  ShellView.prototype.showPlayer = function (file, version, modCount, gameTitle) {
+    this.doc.title = gameTitle || 'Devil Connection'
+    this.frame.title = gameTitle || 'Devil Connection'
     this.mountedFile.textContent = file.name
     this.mountedVersion.textContent = version || '--'
     this.mountedSize.textContent = formatBytes(file.size)
@@ -419,6 +425,8 @@
   }
 
   ShellView.prototype.showManager = function (hasBaseGame) {
+    this.doc.title = 'DevilConnection Modloader web'
+    this.frame.title = 'Devil Connection'
     this.closeMenu(false)
     this.playerView.classList.remove('is-preparing')
     this.playerView.hidden = true
@@ -433,6 +441,18 @@
   ShellView.prototype.navigate = function (html, onLoad) {
     if (onLoad) this.frame.addEventListener('load', onLoad, { once: true })
     this.frame.srcdoc = html
+  }
+
+  ShellView.prototype.chooseCoreFile = function () { this.coreInput.click() }
+  ShellView.prototype.chooseModFiles = function () { this.modInput.click() }
+
+  ShellView.prototype.showSourceRestore = function (count) {
+    this.restoreSourcesDetail.textContent = '重新授权 ' + count + ' 个已记住的本地归档'
+    this.restoreSourcesButton.hidden = false
+  }
+
+  ShellView.prototype.hideSourceRestore = function () {
+    this.restoreSourcesButton.hidden = true
   }
 
   ShellView.prototype.resetCoreInput = function () { this.coreInput.value = '' }

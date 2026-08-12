@@ -15,16 +15,20 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2)
   }
 
-  function PlayerController(view, profile) {
+  function PlayerController(view, profile, sourceStore) {
     this.view = view
     this.profile = profile
+    this.sourceStore = sourceStore || { supported: false }
     this.baseGame = null
+    this.coreHandle = null
     this.mods = []
     this.nextModIndex = 1
     this.nextLaunchId = 1
     this.preparedSession = null
     this.activeSession = null
     this.busy = false
+    this.restoreRecord = null
+    this.restoringSources = false
   }
 
   PlayerController.prototype.bind = function () {
@@ -38,7 +42,10 @@
       moveMod: function (id, delta) { controller.moveMod(id, delta) },
       reload: function () { controller.reload() },
       removeMod: function (id) { controller.removeMod(id) },
+      restoreSources: function (requestAccess) { controller.restoreSources(requestAccess) },
       saveModConfig: function (id, value) { controller.saveModConfig(id, value) },
+      selectCore: function () { controller.selectCore() },
+      selectMods: function () { controller.selectMods() },
       start: function () { controller.start() },
       toggleMod: function (id, enabled) { controller.toggleMod(id, enabled) },
     })
@@ -88,6 +95,106 @@
     this.view.setLaunchReady(Boolean(this.preparedSession && this.preparedSession.ready))
   }
 
+  PlayerController.prototype.persistSources = function () {
+    if (this.restoringSources || !this.sourceStore.supported || typeof this.sourceStore.save !== 'function') return Promise.resolve(false)
+    var controller = this
+    return this.sourceStore.save(this.coreHandle, this.mods.map(function (mod) {
+      return { enabled: mod.enabled, handle: mod.sourceHandle || null }
+    })).catch(function (error) {
+      global.console.warn('[DC local sources]', error)
+      return false
+    }).then(function (result) {
+      if (result) {
+        controller.restoreRecord = null
+        if (controller.view.hideSourceRestore) controller.view.hideSourceRestore()
+      }
+      return result
+    })
+  }
+
+  PlayerController.prototype.selectCore = async function () {
+    if (this.busy || this.activeSession) return
+    if (!this.sourceStore.supported) {
+      this.view.chooseCoreFile()
+      return
+    }
+    try {
+      var handle = await this.sourceStore.pickCore()
+      if (handle) await this.loadCore(await handle.getFile(), handle)
+    } catch (error) {
+      if (!error || error.name !== 'AbortError') this.view.showError(error)
+    }
+  }
+
+  PlayerController.prototype.selectMods = async function () {
+    if (this.busy || this.activeSession) return
+    if (!this.sourceStore.supported) {
+      this.view.chooseModFiles()
+      return
+    }
+    try {
+      var handles = Array.prototype.slice.call(await this.sourceStore.pickMods() || [])
+      if (handles.length) await this.addMods(await Promise.all(handles.map(function (handle) { return handle.getFile() })), handles)
+    } catch (error) {
+      if (!error || error.name !== 'AbortError') this.view.showError(error)
+    }
+  }
+
+  PlayerController.prototype.restoreSources = async function (requestAccess) {
+    if (this.busy || this.activeSession || !this.sourceStore.supported) return
+    this.setBusy(true)
+    this.view.clearError()
+    try {
+      var record = this.restoreRecord || await this.sourceStore.load()
+      if (!record || !record.core) {
+        this.restoreRecord = null
+        this.view.hideSourceRestore()
+        return
+      }
+      this.restoreRecord = record
+      var entries = [{ handle: record.core, kind: 'core' }].concat((record.mods || []).map(function (mod) {
+        return { enabled: mod.enabled !== false, handle: mod.handle, kind: 'mod' }
+      }))
+      var permissionStates = await Promise.all(entries.map(function (entry) {
+        return this.sourceStore.permissionFor(entry.handle, Boolean(requestAccess))
+      }, this))
+      var unavailable = permissionStates.filter(function (state) { return state !== 'granted' }).length
+      if (unavailable) {
+        this.view.showSourceRestore(unavailable)
+        this.view.setStatus(requestAccess ? '无法读取部分已记住的归档，请重新选择文件' : '可以恢复上次选择的本地归档')
+        return
+      }
+
+      this.view.hideSourceRestore()
+      this.view.setStatus('正在恢复上次选择的本地归档')
+      var files = await Promise.all(entries.map(function (entry) { return entry.handle.getFile() }))
+      this.restoringSources = true
+      if (!await this.loadCore(files[0], record.core, true)) throw new Error('无法恢复上次选择的核心 ASAR')
+      if (entries.length > 1) {
+        var beforeCount = this.mods.length
+        if (!await this.addMods(files.slice(1), entries.slice(1).map(function (entry) { return entry.handle }), true)) {
+          throw new Error('无法恢复上次选择的模组 ASAR')
+        }
+        this.mods.slice(beforeCount).forEach(function (mod, index) {
+          mod.enabled = entries[index + 1].enabled
+        })
+        this.syncMods()
+      }
+      this.restoreRecord = null
+      this.restoringSources = false
+      await this.persistSources()
+      this.view.showPage('launch')
+      await this.prepareLaunch()
+      this.view.setStatus('已恢复上次选择，启动环境正在就绪', 'ready')
+    } catch (error) {
+      this.restoringSources = false
+      if (requestAccess) this.view.showError(error)
+      else global.console.warn('[DC local sources]', error)
+    } finally {
+      this.setBusy(false)
+    }
+  }
+
   PlayerController.prototype.prepareLaunch = async function () {
     if (!this.baseGame || this.activeSession) return
     var controller = this
@@ -110,11 +217,13 @@
 
       this.view.setStatus('正在准备浏览器兼容层')
       await this.profile.prepare(resolver)
+      var gameTitle = this.profile.readTitle ? await this.profile.readTitle(resolver) : ''
       this.view.setProgress(78, '入口')
       var gameHtml = await DCWeb.GameDocument.build(resolver)
       var session = {
         baseGame: this.baseGame,
         html: gameHtml,
+        gameTitle: gameTitle,
         launchId: this.nextLaunchId++,
         launchToken: createLaunchToken(),
         modPlan: modPlan,
@@ -165,11 +274,11 @@
     this.preparedSession = null
     this.activeSession = session
     this.view.setLaunchReady(false)
-    this.view.showPlayer(session.baseGame.file, session.baseGame.packageJson.version, session.modPlan.metadata.length)
+    this.view.showPlayer(session.baseGame.file, session.baseGame.packageJson.version, session.modPlan.metadata.length, session.gameTitle)
   }
 
-  PlayerController.prototype.loadCore = async function (file) {
-    if (this.busy || !file) return
+  PlayerController.prototype.loadCore = async function (file, handle, deferPrepare) {
+    if ((this.busy && !this.restoringSources) || !file) return
     this.setBusy(true)
     this.view.setLaunchReady(false)
     this.view.clearError()
@@ -187,20 +296,24 @@
       resolver = null
 
       this.baseGame = { archive: archive, file: file, packageJson: packageJson }
+      this.coreHandle = handle || null
       this.view.showBaseGame(file, packageJson.version)
-      await this.prepareLaunch()
+      await this.persistSources()
+      if (!deferPrepare) await this.prepareLaunch()
+      return true
     } catch (error) {
       if (resolver) resolver.release()
       this.view.showError(error)
+      return false
     } finally {
-      this.setBusy(false)
+      if (!this.restoringSources) this.setBusy(false)
       this.view.resetCoreInput()
     }
   }
 
-  PlayerController.prototype.addMods = async function (files) {
+  PlayerController.prototype.addMods = async function (files, handles, deferPrepare) {
     files = Array.prototype.slice.call(files || [])
-    if (this.busy || this.activeSession || !files.length) return
+    if ((this.busy && !this.restoringSources) || this.activeSession || !files.length) return
     this.setBusy(true)
     this.view.clearError()
     this.view.setStatus('正在读取 ' + files.length + ' 个模组归档')
@@ -210,6 +323,7 @@
       var packages = await Promise.all(files.map(function (file, index) {
         return DCWeb.ModPackage.open(file, firstIndex + index)
       }))
+      packages.forEach(function (mod, index) { mod.sourceHandle = handles && handles[index] ? handles[index] : null })
       var ids = new Set(this.mods.map(function (mod) { return mod.id }))
       packages.forEach(function (mod) {
         if (ids.has(mod.id)) throw new Error('模组 ID 重复：' + mod.id)
@@ -218,13 +332,16 @@
       this.mods = this.mods.concat(packages)
       this.nextModIndex += packages.length
       this.syncMods()
+      await this.persistSources()
       this.view.showPage('mods')
-      if (this.baseGame) await this.prepareLaunch()
+      if (this.baseGame && !deferPrepare) await this.prepareLaunch()
       else this.view.setStatus('已添加 ' + packages.length + ' 个模组；载入核心 ASAR 后即可准备游戏', 'ready')
+      return true
     } catch (error) {
       this.view.showError(error)
+      return false
     } finally {
-      this.setBusy(false)
+      if (!this.restoringSources) this.setBusy(false)
       this.view.resetModInput()
     }
   }
@@ -301,6 +418,7 @@
     try {
       if (!change()) return
       this.syncMods()
+      await this.persistSources()
       if (this.baseGame) await this.prepareLaunch()
     } catch (error) {
       this.view.showError(error)
@@ -360,7 +478,7 @@
     this.preparedSession = null
     this.activeSession = session
     this.view.setLaunchReady(false)
-    this.view.showPlayer(session.baseGame.file, session.baseGame.packageJson.version, session.modPlan.metadata.length)
+    this.view.showPlayer(session.baseGame.file, session.baseGame.packageJson.version, session.modPlan.metadata.length, session.gameTitle)
     this.startFrame(session)
   }
 

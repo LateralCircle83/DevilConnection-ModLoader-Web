@@ -4,8 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <title>Devil Connection Web Shell</title>
-    <link rel="stylesheet" href="./styles.css?v=20260812a" />
+    <title>DevilConnection Modloader web</title>
+    <link rel="icon" href="./favicon.ico" sizes="any" />
+    <link rel="stylesheet" href="./styles.css?v=20260812b" />
     <script defer src="./js/core/namespace.js"></script>
     <script defer src="./js/core/resource-path.js"></script>
     <script defer src="./js/archive/asar-archive.js"></script>
@@ -19,15 +20,16 @@
     <script defer src="./js/runtime/resource-rewriter.js"></script>
     <script defer src="./js/runtime/browser-runtime.js?v=20260812d"></script>
     <script defer src="./js/storage/browser-save-store.js"></script>
+    <script defer src="./js/storage/local-source-store.js?v=20260812a"></script>
     <script defer src="./js/compat/browser-api.js?v=20260812a"></script>
     <script defer src="./js/compat/tyrano-save-adapter.js"></script>
     <script defer src="./js/mods/mod-runtime.js?v=20260812a"></script>
     <script defer src="./js/compat/tyrano-adapter.js?v=20260811c"></script>
-    <script defer src="./js/game/devil-connection-profile.js"></script>
+    <script defer src="./js/game/devil-connection-profile.js?v=20260812a"></script>
     <script defer src="./js/game/game-document.js?v=20260811b"></script>
-    <script defer src="./js/ui/shell-view.js?v=20260812a"></script>
-    <script defer src="./js/player/player-controller.js?v=20260812a"></script>
-    <script defer src="./js/app.js"></script>
+    <script defer src="./js/ui/shell-view.js?v=20260812b"></script>
+    <script defer src="./js/player/player-controller.js?v=20260812b"></script>
+    <script defer src="./js/app.js?v=20260812a"></script>
   </head>
   <body>
     <main id="loader-view" class="manager-view">
@@ -104,6 +106,13 @@
               <span>
                 <strong>开始游戏</strong>
                 <small>使用当前模组顺序启动</small>
+              </span>
+            </button>
+            <button id="restore-sources" class="launch-action source-restore" type="button" hidden>
+              <span class="launch-action-symbol" aria-hidden="true">&#8635;</span>
+              <span>
+                <strong>恢复上次选择</strong>
+                <small id="restore-sources-detail">重新授权已记住的本地归档</small>
               </span>
             </button>
           </div>

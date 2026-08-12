@@ -44,6 +44,7 @@
     this.hasConfig = Boolean(schema)
     this.textFiles = new Map()
     this.runtimeReady = null
+    this.sourceHandle = null
   }
 
   ModPackage.open = async function (file, fallbackIndex) {

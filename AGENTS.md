@@ -45,7 +45,7 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 
 1. `index.html` loads modules in dependency order.
 2. `app.js` constructs `ShellView` and `PlayerController`, binds events, and sets `data-dc-shell-ready="true"`.
-3. The user selects an `app.asar`; `PlayerController.loadCore()` parses it and validates the base archive in isolation.
+3. The controller first attempts to restore previously granted local file handles without prompting. Otherwise the user selects an `app.asar`; `PlayerController.loadCore()` parses it and validates the base archive in isolation.
 4. The user optionally imports mod ASARs. `ModPackage` reads each archive index and metadata, while the manager owns enable state and ordering.
 5. Loading the core or changing the mod list builds a prepared session. `ModPlan.create()` freezes that revision and `LayeredVfs` is built as `[base-game, mod 1, mod 2, ...]`; later enabled mods override earlier layers.
 6. `AssetResolver.prepareStyles()` rewrites CSS dependencies; the game profile prepares the APNG compatibility transform in memory.
@@ -73,6 +73,7 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 - `js/runtime/resource-rewriter.js`: pure CSS, markup, and srcset rewriting helpers.
 - `js/runtime/browser-runtime.js`: iframe fetch/XHR/Worker/DOM/CSS/jQuery interception and cross-realm binary copying.
 - `js/storage/browser-save-store.js`: IndexedDB cache, queued writes, fallback, and migration.
+- `js/storage/local-source-store.js`: File System Access handle persistence for the selected core/mod archives and mod state; never stores archive bytes.
 - `js/compat/browser-api.js`: minimal Electron preload-compatible `window.api`.
 - `js/compat/tyrano-save-adapter.js`: Tyrano save encoding and Blob URL restoration before serialization.
 - `js/compat/tyrano-adapter.js`: Tyrano browser patches, storage-gated startup, audio unlock, and runtime telemetry.
@@ -108,6 +109,14 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - Mod-origin Blob URLs use the same registry and restoration path as base-game URLs. Saves deliberately do not bind or persist a mod selection.
 - Browser storage is origin-specific. Do not imply that saves automatically follow hostname or port changes.
 
+## Local source persistence
+
+- Persist only `FileSystemFileHandle` objects plus mod order/enabled state in the dedicated `devil_connection_web_sources` IndexedDB database. Never copy ASAR `Blob`, `File`, `ArrayBuffer`, headers, or extracted entries into browser storage.
+- Automatic restoration may only use handles whose read permission is already `granted`. A `prompt` state must remain behind the user-initiated restore button because permission requests require a user gesture.
+- File picker and handle persistence are progressive enhancement. Preserve hidden file inputs as the fallback when File System Access API or IndexedDB is unavailable.
+- A manual fallback selection has no reusable handle and must clear the remembered source set rather than retaining stale handles.
+- Persist changes after core selection and mod add/remove/reorder/toggle operations. Config values remain independent in `ModConfigStore`.
+
 ## Mod boundary
 
 - Mods are additional read-only `AsarArchive` sources with stable `mod:<id>` layer IDs. Never modify the base archive or fork resource lookup outside `LayeredVfs`.
@@ -124,6 +133,7 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 ## UI invariants
 
 - The game iframe fills the viewport; shell controls overlay it rather than reserving layout space.
+- The manager document title is `DevilConnection Modloader web`. The active player title comes from the final layered VFS `data/system/Config.tjs` `System.title`, so an enabled mod override may intentionally change it; closing the session restores the manager title.
 - The manager has separate core-load and start commands. Start must stay disabled until isolated base-game validation and the prepared iframe handshake both succeed.
 - Mod controls must communicate top-to-bottom load order and later-wins precedence; build imported metadata with DOM APIs, never manifest `innerHTML`.
 - The top-left player menu trigger must remain keyboard accessible and visible against arbitrary game scenes.
@@ -140,6 +150,9 @@ node tests\url-edge-cases.test.js
 node tests\mod-loader.test.js
 node tests\mod-config.test.js
 node tests\mod-config-controller.test.js
+node tests\game-profile.test.js
+node tests\local-source-store.test.js
+node tests\source-restore-controller.test.js
 node tests\start-gate.test.js
 node tests\player-controller.test.js
 Get-ChildItem js -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
