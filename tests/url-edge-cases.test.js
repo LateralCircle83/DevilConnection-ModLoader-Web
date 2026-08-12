@@ -167,12 +167,93 @@ function testRuntimeRewriters() {
   )
 }
 
+function testRuntimeStyleReadCompatibility() {
+  const rawValues = new WeakMap()
+
+  function StyleDeclaration() {
+    rawValues.set(this, {})
+  }
+  function defineStyleProperty(name) {
+    Object.defineProperty(StyleDeclaration.prototype, name, {
+      configurable: true,
+      enumerable: true,
+      get() { return rawValues.get(this)[name] || '' },
+      set(value) { rawValues.get(this)[name] = value },
+    })
+  }
+  ;[
+    'background',
+    'backgroundImage',
+    'borderImage',
+    'content',
+    'cssText',
+    'cursor',
+    'listStyle',
+    'listStyleImage',
+    'mask',
+    'maskImage',
+  ].forEach(defineStyleProperty)
+  StyleDeclaration.prototype.setProperty = function (name, value) { rawValues.get(this)[name] = value }
+  StyleDeclaration.prototype.getPropertyValue = function (name) { return rawValues.get(this)[name] || '' }
+
+  function Element() {}
+  Element.prototype.setAttribute = function () {}
+
+  const logicalUrl = 'data/image/menu_Title/collection__.png'
+  const blobUrl = 'blob:http://127.0.0.1:4173/title-button'
+  const target = { CSSStyleDeclaration: StyleDeclaration, Element }
+  const resolver = {
+    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
+    has(value) { return value === logicalUrl },
+    restoreObjectUrls(value) { return String(value).split(blobUrl).join(logicalUrl) },
+  }
+
+  loadRuntime().install(target, resolver)
+  const style = new StyleDeclaration()
+  style.backgroundImage = 'url("' + logicalUrl + '")'
+
+  assert.equal(rawValues.get(style).backgroundImage, 'url("' + blobUrl + '")')
+  assert.equal(style.backgroundImage, 'url("' + logicalUrl + '")')
+  assert.equal(style.getPropertyValue('backgroundImage'), 'url("' + logicalUrl + '")')
+}
+
+function testRuntimeDynamicStylePropertyCompatibility() {
+  const rawValues = new WeakMap()
+
+  function DynamicStyleDeclaration() {
+    rawValues.set(this, {})
+  }
+  DynamicStyleDeclaration.prototype.setProperty = function (name, value) { rawValues.get(this)[name] = value }
+  DynamicStyleDeclaration.prototype.getPropertyValue = function (name) { return rawValues.get(this)[name] || '' }
+
+  function Element() {}
+  Element.prototype.setAttribute = function () {}
+
+  const logicalUrl = 'data/image/menu_Title/collection__.png'
+  const blobUrl = 'blob:http://127.0.0.1:4173/dynamic-title-button'
+  const target = { CSSStyleDeclaration: DynamicStyleDeclaration, Element }
+  const resolver = {
+    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
+    has(value) { return value === logicalUrl },
+    restoreObjectUrls(value) { return String(value).split(blobUrl).join(logicalUrl) },
+  }
+
+  loadRuntime().install(target, resolver)
+  const style = new DynamicStyleDeclaration()
+  style.backgroundImage = 'url("' + logicalUrl + '")'
+
+  assert.equal(rawValues.get(style)['background-image'], 'url("' + blobUrl + '")')
+  assert.equal(style.backgroundImage, 'url("' + logicalUrl + '")')
+}
+
 async function main() {
   await testObjectUrlRoundTrip()
   await testFragmentsAndReservedFileNames()
   await testNestedStyles()
   testLayerPrecedence()
   testRuntimeRewriters()
+  testRuntimeStyleReadCompatibility()
+  testRuntimeDynamicStylePropertyCompatibility()
   testPublicContracts()
   console.log('URL edge-case tests passed')
 }

@@ -385,6 +385,9 @@
 
   function installDomUrlRewriting(target, vfs) {
     var resolve = makeResolver(vfs)
+    var restore = typeof vfs.restoreObjectUrls === 'function'
+      ? function (value) { return typeof value === 'string' ? vfs.restoreObjectUrls(value) : value }
+      : function (value) { return value }
     var ElementPrototype = target.Element && target.Element.prototype
     if (!ElementPrototype || ElementPrototype.__dcVfsPatched) return
 
@@ -432,24 +435,40 @@
       stylePrototype.setProperty = function (name, value, priority) {
         return nativeSetProperty.call(this, name, rewriteCssValue(String(value), resolve), priority)
       }
+      var nativeGetPropertyValue = stylePrototype.getPropertyValue
+      if (nativeGetPropertyValue) {
+        stylePrototype.getPropertyValue = function (name) {
+          return restore(nativeGetPropertyValue.call(this, name))
+        }
+      }
       ;[
-        'background',
-        'backgroundImage',
-        'borderImage',
-        'content',
-        'cssText',
-        'cursor',
-        'listStyle',
-        'listStyleImage',
-        'mask',
-        'maskImage',
-      ].forEach(function (property) {
+        ['background', 'background'],
+        ['backgroundImage', 'background-image'],
+        ['borderImage', 'border-image'],
+        ['content', 'content'],
+        ['cssText', ''],
+        ['cursor', 'cursor'],
+        ['listStyle', 'list-style'],
+        ['listStyleImage', 'list-style-image'],
+        ['mask', 'mask'],
+        ['maskImage', 'mask-image'],
+      ].forEach(function (entry) {
+        var property = entry[0]
+        var cssName = entry[1]
         var descriptor = Object.getOwnPropertyDescriptor(stylePrototype, property)
+        if ((!descriptor || !descriptor.set) && cssName && nativeGetPropertyValue) {
+          descriptor = {
+            configurable: true,
+            enumerable: true,
+            get: function () { return nativeGetPropertyValue.call(this, cssName) },
+            set: function (value) { nativeSetProperty.call(this, cssName, value, '') },
+          }
+        }
         if (!descriptor || !descriptor.set || descriptor.configurable === false) return
         Object.defineProperty(stylePrototype, property, {
           configurable: descriptor.configurable,
           enumerable: descriptor.enumerable,
-          get: descriptor.get,
+          get: descriptor.get && function () { return restore(descriptor.get.call(this)) },
           set: function (value) { descriptor.set.call(this, rewriteCssValue(String(value), resolve)) },
         })
       })
@@ -558,6 +577,9 @@
     var $ = target.jQuery
     if (!$ || !vfs || $.__dcVfsPatched) return
     var resolve = makeResolver(vfs)
+    var restore = typeof vfs.restoreObjectUrls === 'function'
+      ? function (value) { return typeof value === 'string' ? vfs.restoreObjectUrls(value) : value }
+      : function (value) { return value }
 
     var nativeCss = $.fn.css
     $.fn.css = function (name, value) {
@@ -566,7 +588,7 @@
         Object.keys(name).forEach(function (key) { copy[key] = rewriteCssValue(name[key], resolve) })
         return nativeCss.call(this, copy)
       }
-      if (arguments.length === 1) return nativeCss.call(this, name)
+      if (arguments.length === 1) return restore(nativeCss.call(this, name))
       if (arguments.length > 1) value = rewriteCssValue(value, resolve)
       return nativeCss.call(this, name, value)
     }
