@@ -39,8 +39,14 @@
     this.configError = doc.getElementById('mod-config-error')
     this.configCloseButton = doc.getElementById('close-mod-config')
     this.configCancelButton = doc.getElementById('cancel-mod-config')
+    this.confirmDialog = doc.getElementById('confirm-dialog')
+    this.confirmTitle = doc.getElementById('confirm-dialog-title')
+    this.confirmMessage = doc.getElementById('confirm-dialog-message')
+    this.confirmAcceptButton = doc.getElementById('accept-confirm')
+    this.confirmCancelButton = doc.getElementById('cancel-confirm')
     this.tabs = Array.prototype.slice.call(doc.querySelectorAll('.manager-tab'))
     this.pages = Array.prototype.slice.call(doc.querySelectorAll('.manager-page'))
+    this.pageListeners = []
     this.statusCopy = doc.getElementById('mount-status')
     this.progressRow = doc.getElementById('progress-row')
     this.progressFill = doc.getElementById('progress-fill')
@@ -52,6 +58,18 @@
     this.coreVersion = doc.getElementById('core-version')
     this.coreSize = doc.getElementById('core-size')
     this.selectedModCount = doc.getElementById('selected-mod-count')
+    this.savePointCount = doc.getElementById('save-point-count')
+    this.saveEntryCount = doc.getElementById('save-entry-count')
+    this.saveTotalSize = doc.getElementById('save-total-size')
+    this.savePointList = doc.getElementById('save-point-list')
+    this.saveStorageList = doc.getElementById('save-storage-list')
+    this.saveStatus = doc.getElementById('save-operation-status')
+    this.saveRefreshButton = doc.getElementById('refresh-saves')
+    this.saveExportButton = doc.getElementById('export-saves')
+    this.saveImportButton = doc.getElementById('import-saves')
+    this.saveClearButton = doc.getElementById('clear-saves')
+    this.saveImportInput = doc.getElementById('import-saves-input')
+    this.readmeView = new DCWeb.ReadmeView(global, doc.getElementById('about-readme'))
     this.menu = doc.getElementById('player-menu')
     this.menuButton = doc.getElementById('open-player-menu')
     this.menuCloseButton = doc.getElementById('close-player-menu')
@@ -66,6 +84,8 @@
     this.menuReturnFocus = null
     this.configReturnFocus = null
     this.configModId = ''
+    this.confirmReturnFocus = null
+    this.confirmResolver = null
   }
 
   ShellView.prototype.bind = function (handlers) {
@@ -133,6 +153,15 @@
       handlers.reload()
     })
     this.menu.ownerDocument.addEventListener('keydown', function (event) {
+      if (!view.confirmDialog.hidden) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          view.resolveConfirmation(false)
+          return
+        }
+        if (event.key === 'Tab') view.keepFocusIn(view.confirmDialog, event)
+        return
+      }
       if (!view.configDialog.hidden) {
         if (event.key === 'Escape') {
           event.preventDefault()
@@ -203,6 +232,120 @@
       tab.tabIndex = active ? 0 : -1
     })
     this.pages.forEach(function (page) { page.hidden = page.dataset.page !== pageName })
+    if (pageName === 'about') this.readmeView.load()
+    this.pageListeners.forEach(function (listener) { listener(pageName) })
+  }
+
+  ShellView.prototype.onPageChange = function (listener) {
+    if (typeof listener === 'function') this.pageListeners.push(listener)
+  }
+
+  ShellView.prototype.bindSaveManager = function (handlers) {
+    var view = this
+    this.saveRefreshButton.addEventListener('click', function () { handlers.refresh() })
+    this.saveExportButton.addEventListener('click', function () { handlers.exportAll() })
+    this.saveImportButton.addEventListener('click', function () { view.saveImportInput.click() })
+    this.saveImportInput.addEventListener('change', function () {
+      var file = view.saveImportInput.files && view.saveImportInput.files[0]
+      view.saveImportInput.value = ''
+      handlers.importFile(file)
+    })
+    this.saveClearButton.addEventListener('click', function () { handlers.clear() })
+    this.confirmCancelButton.addEventListener('click', function () { view.resolveConfirmation(false) })
+    this.confirmAcceptButton.addEventListener('click', function () { view.resolveConfirmation(true) })
+    this.confirmDialog.addEventListener('click', function (event) {
+      if (event.target === view.confirmDialog) view.resolveConfirmation(false)
+    })
+  }
+
+  ShellView.prototype.setSaveBusy = function (value) {
+    this.saveRefreshButton.disabled = value
+    this.saveExportButton.disabled = value
+    this.saveImportButton.disabled = value
+    this.saveClearButton.disabled = value
+    this.saveImportInput.disabled = value
+  }
+
+  ShellView.prototype.setSaveStatus = function (message, state) {
+    this.saveStatus.textContent = message || ''
+    if (state) this.saveStatus.dataset.state = state
+    else delete this.saveStatus.dataset.state
+  }
+
+  ShellView.prototype.renderSaveReport = function (report) {
+    var view = this
+    var doc = this.doc
+    this.savePointCount.textContent = String(report.savePointCount)
+    this.saveEntryCount.textContent = String(report.entryCount)
+    this.saveTotalSize.textContent = formatBytes(report.totalBytes)
+    this.savePointList.replaceChildren()
+    this.saveStorageList.replaceChildren()
+
+    if (!report.savePoints.length) {
+      var empty = createElement(doc, 'div', 'save-empty')
+      empty.append(createElement(doc, 'strong', '', '尚未识别到游戏存档'))
+      empty.append(createElement(doc, 'span', '', report.entryCount ? '当前数据中没有可展示的手动或自动存档' : '开始游戏并保存后，存档会显示在这里'))
+      this.savePointList.append(empty)
+    } else report.savePoints.forEach(function (save) {
+      var row = createElement(doc, 'article', 'save-point-item')
+      var marker = createElement(doc, 'span', 'save-point-marker', save.slot ? String(save.slot).padStart(2, '0') : 'A')
+      var content = createElement(doc, 'div', 'save-point-content')
+      var heading = createElement(doc, 'div', 'save-point-heading')
+      heading.append(createElement(doc, 'strong', '', save.title))
+      heading.append(createElement(doc, 'span', '', save.kind))
+      content.append(heading)
+      var meta = [save.date, save.scenario].filter(Boolean).join(' · ')
+      content.append(createElement(doc, 'p', '', meta || '未记录时间与场景'))
+      row.append(marker, content)
+      view.savePointList.append(row)
+    })
+
+    if (!report.storageEntries.length) {
+      this.saveStorageList.append(createElement(doc, 'p', 'save-storage-empty', '没有存储条目'))
+    } else report.storageEntries.forEach(function (entry) {
+      var row = createElement(doc, 'div', 'save-storage-item')
+      var content = createElement(doc, 'div')
+      content.append(createElement(doc, 'strong', '', entry.kind))
+      content.append(createElement(doc, 'code', '', entry.key))
+      row.append(content, createElement(doc, 'span', '', entry.detail + ' · ' + formatBytes(entry.size)))
+      view.saveStorageList.append(row)
+    })
+    if (!this.saveStatus.textContent) this.setSaveStatus('数据来自当前浏览器来源', '')
+  }
+
+  ShellView.prototype.downloadBlob = function (fileName, blob) {
+    var url = global.URL.createObjectURL(blob)
+    var link = this.doc.createElement('a')
+    link.href = url
+    link.download = fileName
+    this.doc.body.append(link)
+    link.click()
+    link.remove()
+    global.setTimeout(function () { global.URL.revokeObjectURL(url) }, 0)
+  }
+
+  ShellView.prototype.confirmAction = function (options) {
+    if (this.confirmResolver) this.resolveConfirmation(false)
+    this.confirmReturnFocus = this.doc.activeElement
+    this.confirmTitle.textContent = options.title || '确认操作'
+    this.confirmMessage.textContent = options.message || ''
+    this.confirmAcceptButton.textContent = options.confirmLabel || '确认'
+    this.confirmAcceptButton.classList.toggle('is-danger', Boolean(options.danger))
+    this.confirmDialog.hidden = false
+    this.confirmAcceptButton.focus()
+    var view = this
+    return new Promise(function (resolve) { view.confirmResolver = resolve })
+  }
+
+  ShellView.prototype.resolveConfirmation = function (accepted) {
+    if (!this.confirmResolver) return
+    var resolve = this.confirmResolver
+    this.confirmResolver = null
+    this.confirmDialog.hidden = true
+    this.confirmAcceptButton.classList.remove('is-danger')
+    if (this.confirmReturnFocus && this.confirmReturnFocus.focus) this.confirmReturnFocus.focus()
+    this.confirmReturnFocus = null
+    resolve(Boolean(accepted))
   }
 
   ShellView.prototype.setBusy = function (value) {

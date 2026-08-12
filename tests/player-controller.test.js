@@ -56,4 +56,31 @@ assert.equal(view.state.status, '启动环境已就绪，可以开始游戏')
 controller.start()
 assert.equal(view.state.gameTitle, 'Title from Config.tjs')
 
-console.log('Player controller tests passed')
+async function testPreparedStorageSuspension() {
+  const events = []
+  const suspendView = createView()
+  suspendView.frame = {
+    contentWindow: {
+      api: { storage: { async flush() { events.push('flush') } } },
+    },
+  }
+  suspendView.navigate = function (html, onLoad) {
+    events.push(html.indexOf('Closed') !== -1 ? 'navigate-closed' : 'navigate-other')
+    onLoad()
+  }
+  const suspendController = new window.DCWeb.PlayerController(suspendView, {})
+  suspendController.preparedSession = {
+    released: false,
+    resolver: { release() { events.push('release') } },
+  }
+  await suspendController.suspendPreparedSession()
+  assert.deepEqual(events, ['flush', 'navigate-closed', 'release'])
+  assert.equal(suspendController.preparedSession, null)
+}
+
+testPreparedStorageSuspension().then(function () {
+  console.log('Player controller tests passed')
+}).catch(function (error) {
+  console.error(error)
+  process.exitCode = 1
+})

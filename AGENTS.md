@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This is the sole agent-facing architecture and maintenance document for the repository. `README.md` is user-facing Chinese documentation; do not move internal implementation detail into it. Record meaningful completed changes in `HISTORY.md`.
+This is the sole agent-facing architecture and maintenance document for the repository. `README.md` is user-facing Chinese documentation; do not move internal implementation detail into it. Planned work and patch decisions live in `TODO.md`; record meaningful completed changes in `HISTORY.md`.
 
 ## Objective
 
@@ -44,7 +44,7 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 ## Startup sequence
 
 1. `index.html` loads modules in dependency order.
-2. `app.js` constructs `ShellView` and `PlayerController`, binds events, and sets `data-dc-shell-ready="true"`.
+2. `app.js` constructs the view, player, save manager, and their controllers, binds events, and sets `data-dc-shell-ready="true"`.
 3. The controller first attempts to restore previously granted local file handles without prompting. Otherwise the user selects an `app.asar`; `PlayerController.loadCore()` parses it and validates the base archive in isolation.
 4. The user optionally imports mod ASARs. `ModPackage` reads each archive index and metadata, while the manager owns enable state and ordering.
 5. Loading the core or changing the mod list builds a prepared session. `ModPlan.create()` freezes that revision and `LayeredVfs` is built as `[base-game, mod 1, mod 2, ...]`; later enabled mods override earlier layers.
@@ -73,6 +73,8 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 - `js/runtime/resource-rewriter.js`: pure CSS, markup, and srcset rewriting helpers.
 - `js/runtime/browser-runtime.js`: iframe fetch/XHR/Worker/DOM/CSS/jQuery interception and cross-realm binary copying.
 - `js/storage/browser-save-store.js`: IndexedDB cache, queued writes, fallback, and migration.
+- `js/storage/save-manager.js`: original-compatible ZIP/SAV validation and exchange plus Tyrano save summaries.
+- `js/storage/save-manager-controller.js`: manager-side save inspection and confirmed import/export/clear orchestration.
 - `js/storage/local-source-store.js`: File System Access handle persistence for the selected core/mod archives and mod state; never stores archive bytes.
 - `js/compat/browser-api.js`: minimal Electron preload-compatible `window.api`.
 - `js/compat/tyrano-save-adapter.js`: Tyrano save encoding and Blob URL restoration before serialization.
@@ -81,6 +83,7 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 - `js/game/game-document.js`: iframe document construction and static entry rewriting.
 - `js/player/player-controller.js`: core validation, mod ordering, launch/reload/close orchestration, and session resource lifetime.
 - `js/ui/shell-view.js`: two-stage launch UI, mod manager DOM, full-screen player menu, focus behavior, and presentation state.
+- `js/ui/readme-view.js`: safe, dependency-free README rendering for the manager About page.
 - `js/app.js`: composition only; do not place feature logic here.
 
 Keep behavior in the narrowest owning module. Do not create generic compatibility facades or duplicate module globals.
@@ -108,6 +111,10 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - Never persist Blob URLs or VFS layer IDs. A later session must resolve saved logical paths against its current layers.
 - Mod-origin Blob URLs use the same registry and restoration path as base-game URLs. Saves deliberately do not bind or persist a mod selection.
 - Browser storage is origin-specific. Do not imply that saves automatically follow hostname or port changes.
+- Manager ZIP exchange is restricted to original-compatible keys: `DevilConnection_*` plus `NEO`. Each key maps to `encodeURIComponent(key) + '.sav'`, and file contents remain in their existing Tyrano representation.
+- Validate the whole ZIP and decode every target save before mutation. Accept raw JSON, URI encoding, legacy `escape`, and LZString representations, then normalize imported values to UTF-8 `encodeURIComponent(JSON)` storage. Imports update all included keys in one IndexedDB transaction and preserve keys absent from the archive.
+- Fully navigate away from any prepared iframe before import or clear so its `pagehide` flush cannot restore stale values, then build a fresh prepared session.
+- Clear removes only original-compatible save keys. Keep `file:*` compatibility data, mod config, and remembered local file handles in their separate ownership domains.
 
 ## Local source persistence
 
@@ -130,6 +137,18 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - Keep compatibility bounded. Do not add arbitrary filesystem writes, remote catalog loading, base-ASAR mutation, or full-archive buffers.
 - Hook code is trusted renderer code. Preserve the visible trust warning and do not imply sandbox isolation.
 
+## Patch placement policy
+
+Treat patching as three responsibility layers, not as three ordinary VFS override layers:
+
+1. **Host kernel** owns browser-required infrastructure independent of one game source version: archive access, VFS, resource rewriting, browser/Electron/Tyrano contracts, storage, startup, and lifecycle cleanup. Keep this stable and non-optional.
+2. **Game compatibility profile** owns minimal, version-gated in-memory transformations required to preserve original behavior in a browser. It runs against the final resource selected by the base-plus-mod VFS. A required transform must declare its target, strict source signature, expected match count, failure behavior, and tests. Never copy a complete game or Tyrano source file into the repository.
+3. **Mods** own optional performance policies, experience changes, features, and content-specific corrections. Preserve user control and later-wins ordering; do not promote an optional optimization into the non-disableable profile.
+
+Because profile transforms see the final mod-overlaid resource, they may constrain a mod that replaces the same path. Only genuine browser requirements belong there. Prefer adapter-level interception when a stable runtime contract exists; use source transformation only when the behavior cannot be corrected at a narrower boundary.
+
+The existing APNG compatibility transform may remain in `devil-connection-profile.js`. Do not create a generalized patch framework until another concrete required source transform exists. When that threshold is reached, use a small declarative registry rather than scattering replacements through controllers or runtime shims. Consult `TODO.md` for the accepted, conditional, deferred, and rejected candidates from the old-project audit.
+
 ## UI invariants
 
 - The game iframe fills the viewport; shell controls overlay it rather than reserving layout space.
@@ -151,6 +170,9 @@ node tests\mod-loader.test.js
 node tests\mod-config.test.js
 node tests\mod-config-controller.test.js
 node tests\game-profile.test.js
+node tests\browser-save-store.test.js
+node tests\save-manager.test.js
+node tests\save-manager-controller.test.js
 node tests\local-source-store.test.js
 node tests\source-restore-controller.test.js
 node tests\start-gate.test.js

@@ -489,6 +489,33 @@
     try { await this.prepareLaunch() } catch (error) { this.view.showError(error) } finally { this.setBusy(false) }
   }
 
+  PlayerController.prototype.flushPreparedStorage = async function () {
+    var frameStorage = this.preparedSession && this.view.frame.contentWindow && this.view.frame.contentWindow.api && this.view.frame.contentWindow.api.storage
+    if (frameStorage && typeof frameStorage.flush === 'function') await frameStorage.flush()
+  }
+
+  PlayerController.prototype.suspendPreparedSession = async function () {
+    if (this.activeSession) throw new Error('游戏运行期间不能替换存档数据')
+    var controller = this
+    var previous = this.preparedSession
+    await this.flushPreparedStorage()
+    this.preparedSession = null
+    this.publishBridge(null)
+    this.view.setLaunchReady(false)
+    if (!previous) return
+    await new Promise(function (resolve) {
+      controller.view.navigate(CLOSED_DOCUMENT, function () {
+        controller.releaseSession(previous)
+        resolve()
+      })
+    })
+  }
+
+  PlayerController.prototype.refreshStorageSession = async function () {
+    if (this.activeSession) throw new Error('游戏运行期间不能替换存档数据')
+    if (this.baseGame) await this.prepareLaunch()
+  }
+
   PlayerController.prototype.close = function () {
     if (!this.activeSession) return
     var controller = this

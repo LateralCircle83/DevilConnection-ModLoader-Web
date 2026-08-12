@@ -12,6 +12,7 @@
 - 在支持本地文件句柄的浏览器中记住核心与模组选择
 - 兼容游戏需要的部分 Electron 接口
 - 使用 IndexedDB 保存游戏存档
+- 在管理器中查看存档，并通过原版兼容的 ZIP/SAV 导入、导出和清空游戏进度
 - 支持重新载入和退出当前游戏会话
 - 桌面与移动浏览器自适应界面
 
@@ -61,6 +62,10 @@ start_server.bat 8080
 ## 存档
 
 存档默认保存在浏览器的 IndexedDB 中；如果 IndexedDB 不可用，程序会尝试使用 localStorage。
+
+管理器的“存档”页面会列出识别到的手动存档与自动存档，并显示完整存储条目。导出文件是 ZIP 压缩包，其中每个原版游戏存储键对应一个 `.sav` 文件，可用于在网页版与原版 Electron 游戏之间迁移存档。导入会覆盖压缩包中的同名存档，并保留压缩包未包含的现有数据；写入前会检查 ZIP、文件名和存档内容，并将旧式编码规范化为原版兼容格式。
+
+可交换内容限于原版使用的 `DevilConnection_*` 存储键和独立的 `NEO` 进度键，包括手动存档、自动存档、系统变量及原版使用同一前缀写入的照片数据。网页兼容层的 `file:*` 虚拟文件会显示在完整明细中，但不会导出、导入或随“清空存档”删除；模组配置与本地 ASAR 文件选择同样不包含在存档包中。导入和清空前建议先导出现有存档。
 
 浏览器会按照“协议 + 地址 + 端口”隔离数据。因此，`127.0.0.1:4173`、`localhost:4173` 和其他端口拥有不同的存档空间。建议始终使用同一个访问地址，并避免清除该站点的浏览器数据。
 
@@ -115,11 +120,16 @@ start_server.bat 8080
 ```console
 node tests/url-edge-cases.test.js
 node tests/mod-loader.test.js
+node tests/mod-config.test.js
+node tests/mod-config-controller.test.js
 node tests/game-profile.test.js
+node tests/browser-save-store.test.js
+node tests/save-manager.test.js
+node tests/save-manager-controller.test.js
 node tests/local-source-store.test.js
 node tests/source-restore-controller.test.js
 node tests/start-gate.test.js
 node tests/player-controller.test.js
 ```
 
-项目变更记录见 [HISTORY.md](./HISTORY.md)。
+后续开发计划见 [TODO.md](./TODO.md)，项目变更记录见 [HISTORY.md](./HISTORY.md)。

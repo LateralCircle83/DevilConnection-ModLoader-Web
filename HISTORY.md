@@ -6,6 +6,10 @@
 
 ### 新增
 
+- 在管理器中新增“存档”页面，可查看手动/自动存档摘要及完整存储明细。
+- 使用原版兼容的 ZIP/SAV 格式导入和导出 `DevilConnection_*` 与 `NEO` 存档；导入前校验内容并增量覆盖同名项，保留其他存储数据。
+- 清空存档只删除可与原版交换的游戏进度，不删除网页兼容层插件虚拟文件、模组配置或本地文件选择。
+- 新增“关于”页面，运行时安全读取并渲染项目 `README.md`，避免维护重复说明文本。
 - 使用 `favicon.ico` 作为站点图标，管理器标题调整为 `DevilConnection Modloader web`；游戏启动后改用最终资源层 `Config.tjs` 中的 `System.title`。
 - 在支持 File System Access API 的浏览器中持久化核心与模组文件句柄、加载顺序和启用状态，刷新后按权限状态自动恢复或请求用户重新授权，不复制 ASAR 内容。
 - 根据模组 `config.schema.json` 生成配置表单，支持 `text`、`password`、`number`、`toggle` 和 `select` 字段。
@@ -23,6 +27,7 @@
 
 - 将 `README.md` 重写为中文用户指南。
 - 新增智能体维护入口 `AGENTS.md`，统一记录架构、边界和验证要求。
+- 新增 `TODO.md`，记录三层补丁职责、旧项目补丁候选、暂缓项和验收规则。
 - 新增本变更记录，并移除职责重复的 `ARCHITECTURE.md`。
 
 ### 调整

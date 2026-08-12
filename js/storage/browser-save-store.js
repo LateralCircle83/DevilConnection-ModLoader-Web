@@ -26,6 +26,10 @@
       try { target.localStorage.setItem(LOCAL_PREFIX + key, value) } catch (error) {}
     }
 
+    function localSet(key, value) {
+      target.localStorage.setItem(LOCAL_PREFIX + key, value)
+    }
+
     function safeLocalRemove(key) {
       try { target.localStorage.removeItem(LOCAL_PREFIX + key) } catch (error) {}
     }
@@ -46,6 +50,12 @@
 
     function clearLocalEntries(entries) {
       Object.keys(entries || readLocalEntries()).forEach(safeLocalRemove)
+    }
+
+    function cloneEntries(entries) {
+      var clone = {}
+      Object.keys(entries || {}).forEach(function (key) { clone[key] = String(entries[key]) })
+      return clone
     }
 
     var storage = {
@@ -183,26 +193,208 @@
       },
 
       clear: function () {
-        var previousCache = this.cache
-        this.cache = {}
-        this.pending = {}
-        clearLocalEntries()
         var that = this
-        return this.ready.then(function () {
-          if (!that.useIndexedDB || !that.db) return
+        return this.replaceEntries({}).catch(function (error) {
+          reportError(error)
+        })
+      },
+
+      readEntries: function () {
+        var that = this
+        return this.flush().then(function () { return that.ready }).then(function () {
+          if (!that.useIndexedDB || !that.db) {
+            that.cache = readLocalEntries()
+            return cloneEntries(that.cache)
+          }
           return new Promise(function (resolve, reject) {
-            var transaction = that.db.transaction(STORE_NAME, 'readwrite')
-            transaction.objectStore(STORE_NAME).clear()
-            transaction.oncomplete = function () { resolve() }
-            transaction.onerror = function () {
-              reject(transaction.error || new Error('IndexedDB saves could not be cleared'))
+            var entries = {}
+            var transaction = that.db.transaction(STORE_NAME, 'readonly')
+            var request = transaction.objectStore(STORE_NAME).openCursor()
+            request.onsuccess = function (event) {
+              var cursor = event.target.result
+              if (!cursor) return
+              entries[String(cursor.key)] = String(cursor.value)
+              cursor.continue()
             }
+            transaction.oncomplete = function () {
+              var fallback = readLocalEntries()
+              Object.keys(fallback).forEach(function (key) {
+                if (!Object.prototype.hasOwnProperty.call(entries, key)) entries[key] = fallback[key]
+              })
+              that.cache = cloneEntries(entries)
+              resolve(cloneEntries(entries))
+            }
+            transaction.onerror = function () {
+              reject(transaction.error || new Error('IndexedDB saves could not be read'))
+            }
+            transaction.onabort = transaction.onerror
           })
         }).catch(function (error) {
-          Object.keys(previousCache).forEach(function (key) {
-            if (!Object.prototype.hasOwnProperty.call(that.cache, key)) that.cache[key] = previousCache[key]
-          })
           reportError(error)
+          throw error
+        })
+      },
+
+      replaceEntries: function (entries) {
+        var nextEntries = cloneEntries(entries)
+        var previousCache = cloneEntries(this.cache)
+        var previousLocal = readLocalEntries()
+        var that = this
+        if (this.flushTimer) {
+          target.clearTimeout(this.flushTimer)
+          this.flushTimer = null
+        }
+        this.pending = {}
+
+        return this.ready.then(function () {
+          if (!that.useIndexedDB || !that.db) {
+            try {
+              clearLocalEntries()
+              Object.keys(nextEntries).forEach(function (key) { localSet(key, nextEntries[key]) })
+              that.cache = cloneEntries(nextEntries)
+              return
+            } catch (error) {
+              clearLocalEntries()
+              Object.keys(previousLocal).forEach(function (key) {
+                try { localSet(key, previousLocal[key]) } catch (restoreError) {}
+              })
+              that.cache = previousCache
+              throw error
+            }
+          }
+
+          return new Promise(function (resolve, reject) {
+            var transaction = that.db.transaction(STORE_NAME, 'readwrite')
+            var store = transaction.objectStore(STORE_NAME)
+            store.clear()
+            Object.keys(nextEntries).forEach(function (key) { store.put(nextEntries[key], key) })
+            var settled = false
+            function fail() {
+              if (settled) return
+              settled = true
+              that.cache = previousCache
+              reject(transaction.error || new Error('IndexedDB saves could not be replaced'))
+            }
+            transaction.oncomplete = function () {
+              if (settled) return
+              settled = true
+              clearLocalEntries()
+              that.cache = cloneEntries(nextEntries)
+              resolve()
+            }
+            transaction.onerror = fail
+            transaction.onabort = fail
+          })
+        }).catch(function (error) {
+          reportError(error)
+          throw error
+        })
+      },
+
+      updateEntries: function (entries) {
+        var updates = cloneEntries(entries)
+        var keys = Object.keys(updates)
+        var previousCache = cloneEntries(this.cache)
+        var previousLocal = readLocalEntries()
+        var that = this
+
+        return this.flush().then(function () { return that.ready }).then(function () {
+          if (!that.useIndexedDB || !that.db) {
+            try {
+              keys.forEach(function (key) { localSet(key, updates[key]) })
+              keys.forEach(function (key) { that.cache[key] = updates[key] })
+              return
+            } catch (error) {
+              keys.forEach(function (key) {
+                if (Object.prototype.hasOwnProperty.call(previousLocal, key)) {
+                  try { localSet(key, previousLocal[key]) } catch (restoreError) {}
+                } else safeLocalRemove(key)
+              })
+              that.cache = previousCache
+              throw error
+            }
+          }
+
+          return new Promise(function (resolve, reject) {
+            var transaction = that.db.transaction(STORE_NAME, 'readwrite')
+            var store = transaction.objectStore(STORE_NAME)
+            keys.forEach(function (key) { store.put(updates[key], key) })
+            var settled = false
+            function fail() {
+              if (settled) return
+              settled = true
+              that.cache = previousCache
+              reject(transaction.error || new Error('IndexedDB saves could not be updated'))
+            }
+            transaction.oncomplete = function () {
+              if (settled) return
+              settled = true
+              keys.forEach(function (key) {
+                safeLocalRemove(key)
+                that.cache[key] = updates[key]
+              })
+              resolve()
+            }
+            transaction.onerror = fail
+            transaction.onabort = fail
+          })
+        }).catch(function (error) {
+          reportError(error)
+          throw error
+        })
+      },
+
+      removeEntries: function (keys) {
+        var normalizedKeys = Array.from(new Set((keys || []).map(String)))
+        var previousCache = cloneEntries(this.cache)
+        var previousLocal = readLocalEntries()
+        var that = this
+
+        return this.flush().then(function () { return that.ready }).then(function () {
+          if (!that.useIndexedDB || !that.db) {
+            try {
+              normalizedKeys.forEach(function (key) {
+                target.localStorage.removeItem(LOCAL_PREFIX + key)
+                delete that.cache[key]
+              })
+              return
+            } catch (error) {
+              normalizedKeys.forEach(function (key) {
+                if (Object.prototype.hasOwnProperty.call(previousLocal, key)) {
+                  try { localSet(key, previousLocal[key]) } catch (restoreError) {}
+                }
+              })
+              that.cache = previousCache
+              throw error
+            }
+          }
+
+          return new Promise(function (resolve, reject) {
+            var transaction = that.db.transaction(STORE_NAME, 'readwrite')
+            var store = transaction.objectStore(STORE_NAME)
+            normalizedKeys.forEach(function (key) { store.delete(key) })
+            var settled = false
+            function fail() {
+              if (settled) return
+              settled = true
+              that.cache = previousCache
+              reject(transaction.error || new Error('IndexedDB saves could not be removed'))
+            }
+            transaction.oncomplete = function () {
+              if (settled) return
+              settled = true
+              normalizedKeys.forEach(function (key) {
+                safeLocalRemove(key)
+                delete that.cache[key]
+              })
+              resolve()
+            }
+            transaction.onerror = fail
+            transaction.onabort = fail
+          })
+        }).catch(function (error) {
+          reportError(error)
+          throw error
         })
       },
 

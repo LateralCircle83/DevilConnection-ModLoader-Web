@@ -6,8 +6,10 @@
     <meta name="color-scheme" content="light" />
     <title>DevilConnection Modloader web</title>
     <link rel="icon" href="./favicon.ico" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20260812b" />
+    <link rel="stylesheet" href="./styles.css?v=20260813a" />
     <script defer src="./js/core/namespace.js"></script>
+    <script defer src="./js/vendor/jszip.min.js"></script>
+    <script defer src="./js/vendor/lz-string.min.js"></script>
     <script defer src="./js/core/resource-path.js"></script>
     <script defer src="./js/archive/asar-archive.js"></script>
     <script defer src="./js/vfs/layered-vfs.js"></script>
@@ -19,7 +21,9 @@
     <script defer src="./js/mods/mod-plan.js"></script>
     <script defer src="./js/runtime/resource-rewriter.js"></script>
     <script defer src="./js/runtime/browser-runtime.js?v=20260812d"></script>
-    <script defer src="./js/storage/browser-save-store.js"></script>
+    <script defer src="./js/storage/browser-save-store.js?v=20260813c"></script>
+    <script defer src="./js/storage/save-manager.js?v=20260813c"></script>
+    <script defer src="./js/storage/save-manager-controller.js?v=20260813c"></script>
     <script defer src="./js/storage/local-source-store.js?v=20260812a"></script>
     <script defer src="./js/compat/browser-api.js?v=20260812a"></script>
     <script defer src="./js/compat/tyrano-save-adapter.js"></script>
@@ -27,9 +31,10 @@
     <script defer src="./js/compat/tyrano-adapter.js?v=20260811c"></script>
     <script defer src="./js/game/devil-connection-profile.js?v=20260812a"></script>
     <script defer src="./js/game/game-document.js?v=20260811b"></script>
-    <script defer src="./js/ui/shell-view.js?v=20260812b"></script>
-    <script defer src="./js/player/player-controller.js?v=20260812b"></script>
-    <script defer src="./js/app.js?v=20260812a"></script>
+    <script defer src="./js/ui/readme-view.js?v=20260813a"></script>
+    <script defer src="./js/ui/shell-view.js?v=20260813c"></script>
+    <script defer src="./js/player/player-controller.js?v=20260813a"></script>
+    <script defer src="./js/app.js?v=20260813a"></script>
   </head>
   <body>
     <main id="loader-view" class="manager-view">
@@ -67,6 +72,32 @@
           >
             <span aria-hidden="true">02</span>
             模组
+          </button>
+          <button
+            id="manager-tab-saves"
+            class="manager-tab"
+            type="button"
+            role="tab"
+            aria-controls="manager-page-saves"
+            aria-selected="false"
+            data-page="saves"
+            tabindex="-1"
+          >
+            <span aria-hidden="true">03</span>
+            存档
+          </button>
+          <button
+            id="manager-tab-about"
+            class="manager-tab"
+            type="button"
+            role="tab"
+            aria-controls="manager-page-about"
+            aria-selected="false"
+            data-page="about"
+            tabindex="-1"
+          >
+            <span aria-hidden="true">04</span>
+            关于
           </button>
         </nav>
 
@@ -183,6 +214,79 @@
             带有 hook.js 的代码模组会在游戏页面中运行，请只载入可信来源的文件。
           </p>
         </section>
+
+        <section
+          id="manager-page-saves"
+          class="manager-page"
+          role="tabpanel"
+          aria-labelledby="manager-tab-saves"
+          data-page="saves"
+          hidden
+        >
+          <header class="page-heading-row">
+            <div>
+              <p class="section-kicker">LOCAL SAVE DATA</p>
+              <h1>存档管理</h1>
+            </div>
+            <button id="refresh-saves" class="compact-action" type="button">刷新</button>
+          </header>
+          <p class="page-lead">查看当前浏览器来源中的游戏数据，或通过 ZIP/SAV 与原版游戏交换存档。</p>
+
+          <dl class="save-summary" aria-label="存档数据概览">
+            <div><dt>存档点</dt><dd id="save-point-count">--</dd></div>
+            <div><dt>存储条目</dt><dd id="save-entry-count">--</dd></div>
+            <div><dt>数据大小</dt><dd id="save-total-size">--</dd></div>
+          </dl>
+
+          <div class="save-actions">
+            <button id="export-saves" class="save-action" type="button">
+              <span class="save-action-symbol" aria-hidden="true">&#8595;</span>
+              <span><strong>导出存档</strong><small>下载原版兼容 ZIP/SAV</small></span>
+            </button>
+            <button id="import-saves" class="save-action" type="button">
+              <span class="save-action-symbol" aria-hidden="true">&#8593;</span>
+              <span><strong>导入存档</strong><small>覆盖同名项，保留其他数据</small></span>
+            </button>
+            <button id="clear-saves" class="save-action is-danger" type="button">
+              <span class="save-action-symbol" aria-hidden="true">&times;</span>
+              <span><strong>清空存档</strong><small>删除原版兼容游戏进度</small></span>
+            </button>
+          </div>
+          <input id="import-saves-input" type="file" accept=".zip,application/zip" hidden />
+          <p id="save-operation-status" class="save-operation-status" aria-live="polite"></p>
+
+          <section class="save-section" aria-labelledby="save-points-title">
+            <div class="save-section-heading">
+              <h2 id="save-points-title">识别到的存档</h2>
+              <span>手动与自动存档</span>
+            </div>
+            <div id="save-point-list" class="save-point-list">
+              <div class="save-empty"><strong>正在读取存档</strong><span>数据准备完成后会显示在这里</span></div>
+            </div>
+          </section>
+
+          <details class="save-storage-details">
+            <summary>查看完整存储明细</summary>
+            <div id="save-storage-list" class="save-storage-list"></div>
+          </details>
+          <p class="save-origin-note">存档按协议、地址和端口隔离；模组配置和本地 ASAR 文件选择不包含在此处。</p>
+        </section>
+
+        <section
+          id="manager-page-about"
+          class="manager-page"
+          role="tabpanel"
+          aria-labelledby="manager-tab-about"
+          data-page="about"
+          hidden
+        >
+          <p class="section-kicker">PROJECT NOTES</p>
+          <h1>关于</h1>
+          <p class="page-lead">此页面直接读取项目的 README，始终与当前版本说明保持一致。</p>
+          <article id="about-readme" class="readme-view" data-state="idle">
+            <p>正在读取 README.md</p>
+          </article>
+        </section>
       </section>
     </main>
 
@@ -203,6 +307,18 @@
           <button class="config-action is-primary" type="submit">保存配置</button>
         </footer>
       </form>
+    </div>
+
+    <div id="confirm-dialog" class="config-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" hidden>
+      <div class="confirm-dialog-shell">
+        <p class="section-kicker">CONFIRM ACTION</p>
+        <h2 id="confirm-dialog-title">确认操作</h2>
+        <p id="confirm-dialog-message" class="confirm-dialog-message"></p>
+        <div class="confirm-dialog-actions">
+          <button id="cancel-confirm" class="config-action" type="button">取消</button>
+          <button id="accept-confirm" class="config-action is-primary" type="button">确认</button>
+        </div>
+      </div>
     </div>
 
     <section id="player-view" class="player-view" hidden>
