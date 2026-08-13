@@ -3,8 +3,8 @@
 const assert = require('node:assert/strict')
 
 global.window = {}
-require('../js/core/namespace.js')
-require('../js/core/resource-path.js')
+require('../js/kernel/namespace.js')
+require('../js/kernel/resource-path.js')
 require('../js/mods/mod-config-store.js')
 
 window.DCWeb.BrowserSaveStore = {
@@ -18,7 +18,7 @@ window.DCWeb.BrowserSaveStore = {
     }
   },
 }
-require('../js/compat/browser-api.js')
+require('../js/kernel/browser-api.js')
 require('../js/mods/mod-runtime.js')
 
 function createStorage() {

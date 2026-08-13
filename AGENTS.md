@@ -25,7 +25,9 @@ The application has no build step, package manager, backend, Service Worker, or 
 user app.asar -> AsarArchive
 user mod ASARs -> ModPackage -> ModPlan
   -> LayeredVfs [base-game, enabled mods in UI order]
-  -> AssetResolver + ObjectUrlRegistry + StyleProcessor
+  -> SessionPreparer
+     -> DevilConnectionProfile required in-memory transforms
+     -> Host kernel resource preparation
   -> GameDocument iframe bootstrap
   -> Browser Runtime + Electron/Tyrano adapters
   -> TYRANO.init
@@ -44,47 +46,31 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 ## Startup sequence
 
 1. `index.html` loads modules in dependency order.
-2. `app.js` constructs the view, player, save manager, and their controllers, binds events, and sets `data-dc-shell-ready="true"`.
+2. `js/shell/app.js` constructs the view, player, save manager, and their controllers, binds events, and sets `data-dc-shell-ready="true"`.
 3. The controller first attempts to restore previously granted local file handles without prompting. Otherwise the user selects an `app.asar`; `PlayerController.loadCore()` parses it and validates the base archive in isolation.
 4. The user optionally imports mod ASARs. `ModPackage` reads each archive index and metadata, while the manager owns enable state and ordering.
-5. Loading the core or changing the mod list builds a prepared session. `ModPlan.create()` freezes that revision and `LayeredVfs` is built as `[base-game, mod 1, mod 2, ...]`; later enabled mods override earlier layers.
-6. `AssetResolver.prepareStyles()` rewrites CSS dependencies; the game profile prepares the APNG compatibility transform in memory.
-7. `GameDocument.build()` parses archive `index.html`, injects the runtime/bootstrap, replaces `electron_latest.js`, and rewrites static resource attributes.
-8. The resulting document is assigned to a non-interactive game iframe through `srcdoc` before the user starts the game.
-9. Runtime interceptors route local fetch, XHR, Worker, DOM, CSS, markup, srcset, and jQuery resource requests through the prepared resolver.
-10. `ModRuntime` installs the bounded DCML compatibility API immediately, then executes enabled `hook.js` files in UI order after `DOMContentLoaded` so `document.body` exists.
-11. `TyranoAdapter` intercepts the automatic `TYRANO.init()` call and reports readiness with the per-session launch token only after `ModRuntime.ready` settles. Do not rely on strict `MessageEvent.source` identity for `srcdoc` messages.
-12. The host start button becomes enabled only after that handshake. Its trusted click synchronously calls the already-loaded same-origin iframe, unlocks audio, and starts the original `TYRANO.init()` without another overlay.
-13. Tyrano loads `Config.tjs`, the KAG runtime, and the initial scenario through VFS-backed requests.
+5. Loading the core or changing the mod list asks `SessionPreparer` to build a prepared session. `ModPlan.create()` freezes that revision and `LayeredVfs` is built as `[base-game, mod 1, mod 2, ...]`; later enabled mods override earlier layers.
+6. The selected game profile runs required, strictly matched in-memory transforms against that final layered resource view and returns per-patch status records.
+7. The host kernel prepares browser resource representations such as dependency-ordered CSS from the resulting active resource view.
+8. `GameDocument.build()` parses the resulting archive `index.html`, injects the runtime/bootstrap, replaces `electron_latest.js`, and rewrites static resource attributes.
+9. The resulting document is assigned to a non-interactive game iframe through `srcdoc` before the user starts the game.
+10. Runtime interceptors route local fetch, XHR, Worker, DOM, CSS, markup, srcset, and jQuery resource requests through the prepared resolver.
+11. `ModRuntime` installs the bounded DCML compatibility API immediately, then executes enabled `hook.js` files in UI order after `DOMContentLoaded` so `document.body` exists.
+12. `TyranoAdapter` intercepts the automatic `TYRANO.init()` call and reports readiness with the per-session launch token only after `ModRuntime.ready` settles. Do not rely on strict `MessageEvent.source` identity for `srcdoc` messages.
+13. The host start button becomes enabled only after that handshake. Its trusted click synchronously calls the already-loaded same-origin iframe, unlocks audio, and starts the original `TYRANO.init()` without another overlay.
+14. Tyrano loads `Config.tjs`, the KAG runtime, and the initial scenario through VFS-backed requests.
 
 ## Module ownership
 
-- `js/core/namespace.js`: creates `window.DCWeb` only.
-- `js/core/resource-path.js`: canonical path parsing, URL suffix handling, encoding, CSS-relative resolution, and MIME lookup.
-- `js/archive/asar-archive.js`: ASAR header/index parsing and read-only byte-range access.
-- `js/vfs/layered-vfs.js`: ordered content resolution. Later layers override earlier layers.
-- `js/assets/object-url-registry.js`: Blob URL creation, reverse mapping, encoded URL restoration, and revocation.
-- `js/assets/style-processor.js`: recursive CSS dependency preparation and URL rewriting.
-- `js/assets/asset-resolver.js`: facade joining VFS, prepared text, style processing, and URL lifetime.
-- `js/mods/mod-package.js`: read-only mod ASAR metadata, runtime text cache, and VFS layer projection.
-- `js/mods/mod-config-store.js`: canonical DCML config name/path mapping and shared localStorage JSON/raw access.
-- `js/mods/mod-plan.js`: immutable enabled package order, merged synchronous text view, and ordered hooks.
-- `js/mods/mod-runtime.js`: bounded DCML `ModLoader`, config, Node-like, and Electron hook compatibility inside the iframe.
-- `js/runtime/resource-rewriter.js`: pure CSS, markup, and srcset rewriting helpers.
-- `js/runtime/browser-runtime.js`: iframe fetch/XHR/Worker/DOM/CSS/jQuery interception and cross-realm binary copying.
-- `js/storage/browser-save-store.js`: IndexedDB cache, queued writes, fallback, and migration.
-- `js/storage/save-manager.js`: original-compatible ZIP/SAV validation and exchange plus Tyrano save summaries.
-- `js/storage/save-manager-controller.js`: manager-side save inspection and confirmed import/export/clear orchestration.
-- `js/storage/local-source-store.js`: File System Access handle persistence for the selected core/mod archives and mod state; never stores archive bytes.
-- `js/compat/browser-api.js`: minimal Electron preload-compatible `window.api`.
-- `js/compat/tyrano-save-adapter.js`: Tyrano save encoding and Blob URL restoration before serialization.
-- `js/compat/tyrano-adapter.js`: Tyrano browser patches, storage-gated startup, audio unlock, and runtime telemetry.
-- `js/game/devil-connection-profile.js`: game identity requirements and version-specific in-memory patches.
-- `js/game/game-document.js`: iframe document construction and static entry rewriting.
-- `js/player/player-controller.js`: core validation, mod ordering, launch/reload/close orchestration, and session resource lifetime.
-- `js/ui/shell-view.js`: two-stage launch UI, mod manager DOM, full-screen player menu, focus behavior, and presentation state.
-- `js/ui/readme-view.js`: safe, dependency-free README rendering for the manager About page.
-- `js/app.js`: composition only; do not place feature logic here.
+The source tree has five top-level responsibility domains. Add files to the narrowest existing domain; do not recreate one-folder-per-primitive layout.
+
+- `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
+- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared patches, `devil-connection-apng.js` owns the APNG transform, and `devil-connection.js` owns game identity, title reading, and the patch list.
+- `js/mods/`: DCML package, ordering, hook, and configuration compatibility. Later enabled VFS layers win, but hooks execute individually in UI order.
+- `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; compatibility, save, source, and view modules own their corresponding manager behavior; `app.js` is composition only.
+- `js/vendor/`: third-party libraries retained without application ownership.
+
+Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, `asset-resolver.js` owns prepared resources and URL lifetime, and adapters do not absorb game-version source transforms.
 
 Keep behavior in the narrowest owning module. Do not create generic compatibility facades or duplicate module globals.
 
@@ -95,6 +81,7 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - Absolute HTTP/file paths may intentionally resolve to archive entries when they contain anchored `data/` or `tyrano/` segments.
 - `data:`, `blob:`, `javascript:`, `mailto:`, `tel:`, fragment-only, missing, and otherwise unsupported resources must pass through unchanged.
 - `AssetResolver` owns generated URLs. Release the previous resolver only after replacement iframe navigation completes.
+- Prepared in-memory resources are the active session view for `getBlob()`, `readText()`, and `getObjectUrl()`; consumers must not bypass the resolver to read an untransformed VFS entry.
 - CSS files must be prepared dependency-first so nested `@import` and `url()` references never retain stale Blob URLs.
 - Values crossing into the iframe realm may require realm-local `ArrayBuffer`, `Blob`, `Response`, or event objects.
 - Any Node-like global shim used with `instanceof` must be callable. In particular, keep `ModRuntime`'s `Buffer` shim as a function; the game's OGG metadata library performs `buffer instanceof Buffer` even when no mods are enabled.
@@ -147,7 +134,11 @@ Treat patching as three responsibility layers, not as three ordinary VFS overrid
 
 Because profile transforms see the final mod-overlaid resource, they may constrain a mod that replaces the same path. Only genuine browser requirements belong there. Prefer adapter-level interception when a stable runtime contract exists; use source transformation only when the behavior cannot be corrected at a narrower boundary.
 
-The existing APNG compatibility transform may remain in `devil-connection-profile.js`. Do not create a generalized patch framework until another concrete required source transform exists. When that threshold is reached, use a small declarative registry rather than scattering replacements through controllers or runtime shims. Consult `TODO.md` for the accepted, conditional, deferred, and rejected candidates from the old-project audit.
+`SessionPreparer` enforces the launch-time crossing order: immutable base-plus-mod VFS, required profile transforms, host browser-resource preparation, then `GameDocument`. Do not reproduce this sequence in `PlayerController`, a profile, or a mod module. Runtime host adapters remain non-optional after iframe bootstrap; mod hooks remain ordered user extensions rather than part of profile preparation.
+
+`ProfileRunner` is deliberately small and declarative. Every patch entry must provide an ID, target, required flag, strict signatures with expected counts, failure policy, and transform. It publishes serializable status records and aborts the prepared session when a required target is absent, unsupported, or fails. Keep patch transforms in their own profile files; do not turn the runner into a general plugin API or allow manager-side patch toggles for required compatibility.
+
+The compatibility manager page is an observer, not an executor. It displays the report produced during session preparation and may export metadata-only JSON containing the profile, patch states, game version, and enabled mod identities. It must never export local file paths, handles, archive bytes, extracted content, or hook source. Consult `TODO.md` for accepted, conditional, deferred, and rejected candidates from the old-project audit.
 
 ## UI invariants
 
@@ -155,6 +146,7 @@ The existing APNG compatibility transform may remain in `devil-connection-profil
 - The manager document title is `DevilConnection Modloader web`. The active player title comes from the final layered VFS `data/system/Config.tjs` `System.title`, so an enabled mod override may intentionally change it; closing the session restores the manager title.
 - The manager has separate core-load and start commands. Start must stay disabled until isolated base-game validation and the prepared iframe handshake both succeed.
 - Mod controls must communicate top-to-bottom load order and later-wins precedence; build imported metadata with DOM APIs, never manifest `innerHTML`.
+- The compatibility page must describe required transforms without presenting disable controls. A failed required transform automatically opens that page and leaves Start disabled.
 - The top-left player menu trigger must remain keyboard accessible and visible against arbitrary game scenes.
 - The full-screen menu must retain Escape/close behavior, focus containment, focus restoration, and mobile single-column layout.
 - Keep fixed controls stable in size and account for safe-area insets.
@@ -175,6 +167,9 @@ node tests\save-manager.test.js
 node tests\save-manager-controller.test.js
 node tests\local-source-store.test.js
 node tests\source-restore-controller.test.js
+node tests\profile-runner.test.js
+node tests\session-preparer.test.js
+node tests\compatibility-controller.test.js
 node tests\start-gate.test.js
 node tests\player-controller.test.js
 Get-ChildItem js -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }

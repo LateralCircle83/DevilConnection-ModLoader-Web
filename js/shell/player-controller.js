@@ -29,6 +29,7 @@
     this.busy = false
     this.restoreRecord = null
     this.restoringSources = false
+    this.compatibilityListeners = []
   }
 
   PlayerController.prototype.bind = function () {
@@ -74,6 +75,26 @@
   PlayerController.prototype.setBusy = function (value) {
     this.busy = value
     this.view.setBusy(value)
+  }
+
+  PlayerController.prototype.onCompatibilityChange = function (listener) {
+    if (typeof listener === 'function') this.compatibilityListeners.push(listener)
+  }
+
+  PlayerController.prototype.compatibilityContext = function () {
+    return {
+      gameVersion: this.baseGame && this.baseGame.packageJson ? this.baseGame.packageJson.version || '' : '',
+      mods: this.mods.filter(function (mod) { return mod.enabled }).map(function (mod) {
+        return { id: mod.id, name: mod.name, version: mod.version }
+      }),
+    }
+  }
+
+  PlayerController.prototype.publishCompatibility = function (state, value) {
+    var event = { context: this.compatibilityContext(), state: state }
+    if (state === 'ready') event.report = value
+    if (state === 'failed') event.error = value
+    this.compatibilityListeners.forEach(function (listener) { listener(event) })
   }
 
   PlayerController.prototype.publishBridge = function (session) {
@@ -204,44 +225,49 @@
     this.view.setProgress(4, '模组')
     this.view.setStatus('正在准备启动环境')
 
-    var resolver = null
+    var prepared = null
+    var compatibility = null
+    this.publishCompatibility('checking')
     try {
-      var modPlan = await DCWeb.ModPlan.create(this.mods)
-      var layers = [{ id: 'base-game', kind: 'base', source: this.baseGame.archive }].concat(modPlan.layers)
-      var vfs = new DCWeb.LayeredVfs(layers)
-      resolver = new DCWeb.AssetResolver(vfs)
       var view = this.view
-      await resolver.prepareStyles(function (current, total) {
-        view.setProgress(10 + (current / Math.max(total, 1)) * 58, '样式 ' + current + '/' + total)
+      prepared = await DCWeb.SessionPreparer.prepare({
+        baseGame: this.baseGame,
+        mods: this.mods,
+        onPhase: function (phase, detail) {
+          if (phase === 'profile') view.setStatus('正在应用游戏兼容档案')
+          if (phase === 'profile-ready') compatibility = detail
+          if (phase === 'entry') view.setProgress(78, '入口')
+        },
+        onStyleProgress: function (current, total) {
+          view.setProgress(10 + (current / Math.max(total, 1)) * 58, '样式 ' + current + '/' + total)
+        },
+        profile: this.profile,
       })
-
-      this.view.setStatus('正在准备浏览器兼容层')
-      await this.profile.prepare(resolver)
-      var gameTitle = this.profile.readTitle ? await this.profile.readTitle(resolver) : ''
-      this.view.setProgress(78, '入口')
-      var gameHtml = await DCWeb.GameDocument.build(resolver)
       var session = {
         baseGame: this.baseGame,
-        html: gameHtml,
-        gameTitle: gameTitle,
+        compatibility: prepared.compatibility,
+        html: prepared.html,
+        gameTitle: prepared.gameTitle,
         launchId: this.nextLaunchId++,
         launchToken: createLaunchToken(),
-        modPlan: modPlan,
+        modPlan: prepared.modPlan,
         ready: false,
         released: false,
-        resolver: resolver,
+        resolver: prepared.resolver,
         restartWhenReady: false,
-        vfs: vfs,
+        vfs: prepared.vfs,
       }
       this.preparedSession = session
+      this.publishCompatibility('ready', prepared.compatibility)
       this.publishBridge(session)
-      resolver = null
       this.view.setProgress(88, '引擎')
       this.view.setStatus('正在后台载入游戏引擎')
       this.view.showPreparingPlayer()
-      this.view.navigate(gameHtml, function () { controller.releaseSession(previous) })
+      this.view.navigate(prepared.html, function () { controller.releaseSession(previous) })
     } catch (error) {
-      if (resolver) resolver.release()
+      if (prepared && prepared.resolver) prepared.resolver.release()
+      if (error && error.compatibility) this.publishCompatibility('failed', error)
+      else if (compatibility) this.publishCompatibility('ready', compatibility)
       this.preparedSession = null
       this.publishBridge(null)
       if (previous) {

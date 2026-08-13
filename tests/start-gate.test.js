@@ -3,11 +3,11 @@
 const assert = require('node:assert/strict')
 
 global.window = {}
-require('../js/core/namespace.js')
+require('../js/kernel/namespace.js')
 
 window.DCWeb.Runtime = { installJQuery() {} }
 window.DCWeb.TyranoSaveAdapter = { install() {} }
-require('../js/compat/tyrano-adapter.js')
+require('../js/kernel/tyrano-adapter.js')
 
 function createDocument() {
   const elements = new Map()

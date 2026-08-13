@@ -3,11 +3,25 @@
 const assert = require('node:assert/strict')
 
 global.window = {}
-require('../js/core/namespace.js')
-require('../js/core/resource-path.js')
-require('../js/game/devil-connection-profile.js')
+require('../js/kernel/namespace.js')
+require('../js/kernel/resource-path.js')
+require('../js/profiles/profile-runner.js')
+require('../js/profiles/devil-connection-apng.js')
+require('../js/profiles/devil-connection.js')
 
 const profile = window.DCWeb.DevilConnectionProfile
+
+function apngSource() {
+  const resultSignature = 'return new APNG().load(blob).then(([frames, iterations]) => {'
+  return [
+    resultSignature,
+    resultSignature,
+    'const bytes = new Uint8Array(blob.buffer)',
+    'function playAPNG(apng, canvas, x, y, w, h, reversed, onFinish, onTick) {',
+    '  return apng',
+    '}',
+  ].join('\n')
+}
 
 assert.equal(
   profile.parseGameTitle(';System.title=恶魔连结 - 简体中文 Ver1.01'),
@@ -16,13 +30,47 @@ assert.equal(
 assert.equal(profile.parseGameTitle('System.title="Devil Connection"'), 'Devil Connection')
 assert.equal(profile.parseGameTitle("System.title='Devil Connection Web'"), 'Devil Connection Web')
 assert.equal(profile.parseGameTitle(';projectID=DevilConnection'), '')
+assert.equal(profile.patches[0].id, 'devil-connection-apng-browser-compat')
+assert.equal(profile.patches[0].required, true)
+assert.equal(profile.patches[0].target, 'tyrano/libs/apng.js')
 
-profile.readTitle({
+async function testApngPatch() {
+  let prepared = null
+  const preparedText = new Map()
+  const resolver = {
+    resolve(path) { return path === 'tyrano/libs/apng.js' ? { kind: 'mod', layerId: 'mod:safe-apng', path } : null },
+    readText() { return Promise.resolve(apngSource()) },
+    prepareText(path, text, mime) { prepared = { mime, path, text }; preparedText.set(path, text) },
+  }
+  const result = await window.DCWeb.ProfileRunner.run(profile, resolver)
+  assert.equal(result.status, 'ready')
+  assert.equal(result.patches[0].status, 'applied')
+  assert.equal(result.patches[0].sourceLayerId, 'mod:safe-apng')
+  assert.equal(prepared.path, 'tyrano/libs/apng.js')
+  assert.equal(prepared.mime, 'text/javascript;charset=utf-8')
+  assert.match(prepared.text, /ArrayBuffer\.isView\(blob\)/)
+  assert.match(prepared.text, /if \(!apng \|\| !apng\.images/)
+
+  await assert.rejects(
+    window.DCWeb.ProfileRunner.run(profile, {
+      resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
+      readText() { return Promise.resolve(apngSource().replace('const bytes = new Uint8Array(blob.buffer)', 'const bytes = blob')) },
+    }),
+    function (error) {
+      assert.equal(error.name, 'ProfileCompatibilityError')
+      assert.equal(error.compatibility.patches[0].status, 'unsupported')
+      return /预期 1 处，实际 0 处/.test(error.message)
+    },
+  )
+}
+
+Promise.all([testApngPatch(), profile.readTitle({
   readText(path) {
     assert.equal(path, 'data/system/Config.tjs')
     return Promise.resolve(';System.title=Loaded from VFS')
   },
-}).then(function (title) {
+})]).then(function (values) {
+  const title = values[1]
   assert.equal(title, 'Loaded from VFS')
   console.log('Game profile tests passed')
 }).catch(function (error) {

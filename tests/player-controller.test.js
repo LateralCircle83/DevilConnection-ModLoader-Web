@@ -8,8 +8,8 @@ global.window = {
     if (type === 'message') messageHandler = handler
   },
 }
-require('../js/core/namespace.js')
-require('../js/player/player-controller.js')
+require('../js/kernel/namespace.js')
+require('../js/shell/player-controller.js')
 
 function createView() {
   const state = { gameTitle: '', ready: false, status: '' }

@@ -3,15 +3,15 @@
 const assert = require('node:assert/strict')
 
 global.window = {}
-require('../js/core/namespace.js')
-require('../js/core/resource-path.js')
-require('../js/archive/asar-archive.js')
-require('../js/vfs/layered-vfs.js')
-require('../js/assets/object-url-registry.js')
-require('../js/assets/style-processor.js')
-require('../js/assets/asset-resolver.js')
-require('../js/runtime/resource-rewriter.js')
-require('../js/runtime/browser-runtime.js')
+require('../js/kernel/namespace.js')
+require('../js/kernel/resource-path.js')
+require('../js/kernel/asar-archive.js')
+require('../js/kernel/layered-vfs.js')
+require('../js/kernel/object-url-registry.js')
+require('../js/kernel/style-processor.js')
+require('../js/kernel/asset-resolver.js')
+require('../js/kernel/resource-rewriter.js')
+require('../js/kernel/browser-runtime.js')
 
 const { AsarArchive, AssetResolver, LayeredVfs, ResourcePath } = window.DCWeb
 
@@ -99,6 +99,25 @@ async function testNestedStyles() {
   assert.match(mainText, /blob:[^"')]+#mark/)
   assert.match(themeText, /url\("blob:[^"')]+"\)/)
   assert.equal(themeText.includes('?v=2'), false)
+  resolver.release()
+}
+
+async function testPreparedTextIsTheActiveSessionResource() {
+  const source = '.hero{background:url("../image/original.png")}'
+  const archive = new AsarArchive(
+    new Blob([source]),
+    {},
+    0,
+    new Map([entry('data/css/main.css', 0, Buffer.byteLength(source))]),
+  )
+  const resolver = createResolver(archive)
+  const patched = '.hero{color:red}'
+
+  resolver.prepareText('data/css/main.css', patched, 'text/css')
+  await resolver.prepareStyles()
+  assert.equal(await resolver.readText('data/css/main.css'), patched)
+  assert.equal(await resolver.getBlob('data/css/main.css').text(), patched)
+  assert.equal(await (await fetch(resolver.getObjectUrl('data/css/main.css'))).text(), patched)
   resolver.release()
 }
 
@@ -472,6 +491,7 @@ async function main() {
   await testObjectUrlRoundTrip()
   await testFragmentsAndReservedFileNames()
   await testNestedStyles()
+  await testPreparedTextIsTheActiveSessionResource()
   testLayerPrecedence()
   testRuntimeRewriters()
   testRuntimeStyleReadCompatibility()

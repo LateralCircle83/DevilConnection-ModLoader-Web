@@ -4,8 +4,8 @@ const assert = require('node:assert/strict')
 
 global.Blob = global.Blob || require('node:buffer').Blob
 global.window = {}
-require('../js/core/namespace.js')
-require('../js/storage/save-manager.js')
+require('../js/kernel/namespace.js')
+require('../js/shell/save-manager.js')
 const JSZip = require('../js/vendor/jszip.min.js')
 const LZString = require('../js/vendor/lz-string.min.js')
 

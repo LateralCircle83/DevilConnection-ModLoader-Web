@@ -6,33 +6,16 @@ cd /d "%~dp0"
 set "PORT=%~1"
 if not defined PORT set "PORT=4173"
 
-echo(%PORT%| findstr /r "^[0-9][0-9]*$" >nul
-if errorlevel 1 (
-  echo Invalid port: %PORT%
-  echo Usage: %~nx0 [port]
-  pause
-  exit /b 1
-)
+where node >nul 2>nul
+if errorlevel 1 goto node_missing
 
-echo.
-echo DevilConnection Modloader web
-echo URL: http://127.0.0.1:%PORT%/
-echo Press Ctrl+C to stop the temporary server.
-echo.
+node "%~dp0tools\static-server.js" "%PORT%"
+set "SERVER_EXIT=%ERRORLEVEL%"
+if not "%SERVER_EXIT%"=="0" pause
+exit /b %SERVER_EXIT%
 
-where py >nul 2>nul
-if not errorlevel 1 (
-  py -3 -m http.server %PORT% --bind 127.0.0.1
-  exit /b
-)
-
-where python >nul 2>nul
-if not errorlevel 1 (
-  python -m http.server %PORT% --bind 127.0.0.1
-  exit /b
-)
-
-echo Python 3 was not found.
-echo Install Python or add python.exe to PATH, then run this file again.
+:node_missing
+echo Node.js was not found.
+echo Install Node.js or add node.exe to PATH, then run this file again.
 pause
 exit /b 1

@@ -568,6 +568,191 @@ p {
   line-height: 1.55;
 }
 
+.compatibility-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 30px;
+  border-top: 1px solid #aeb7b1;
+  border-bottom: 1px solid #aeb7b1;
+}
+
+.compatibility-summary div {
+  min-width: 0;
+  padding: 15px 18px;
+  border-right: 1px solid #ccd2ce;
+}
+
+.compatibility-summary div:first-child {
+  padding-left: 0;
+}
+
+.compatibility-summary div:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.compatibility-summary dt,
+.compatibility-summary dd {
+  margin: 0;
+}
+
+.compatibility-summary dt {
+  color: #747d77;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.compatibility-summary dd {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.compatibility-summary dd[data-state="ready"] {
+  color: #146b4c;
+}
+
+.compatibility-summary dd[data-state="checking"] {
+  color: #77683c;
+}
+
+.compatibility-summary dd[data-state="failed"] {
+  color: #9d2d2d;
+}
+
+.compatibility-list-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 8px 9px;
+  color: #7b837e;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.compatibility-list {
+  border-top: 1px solid #aeb7b1;
+}
+
+.compatibility-empty {
+  display: grid;
+  place-items: center;
+  min-height: 180px;
+  padding: 28px;
+  border-bottom: 1px solid #c8cfc9;
+  color: #69716c;
+  text-align: center;
+}
+
+.compatibility-empty strong,
+.compatibility-empty span {
+  display: block;
+}
+
+.compatibility-empty strong {
+  align-self: end;
+  color: #3f4642;
+  font-size: 14px;
+}
+
+.compatibility-empty span {
+  align-self: start;
+  margin-top: 7px;
+  font-size: 12px;
+}
+
+.compatibility-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 126px;
+  padding: 17px 8px;
+  border-bottom: 1px solid #c8cfc9;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.compatibility-item[data-state="failed"],
+.compatibility-item[data-state="unsupported"] {
+  background: rgba(255, 247, 247, 0.7);
+}
+
+.compatibility-order {
+  color: #146b4c;
+  font: 800 13px/1 Consolas, monospace;
+  text-align: center;
+}
+
+.compatibility-content {
+  min-width: 0;
+}
+
+.compatibility-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.compatibility-title-line strong {
+  font-size: 14px;
+}
+
+.compatibility-required,
+.compatibility-state {
+  padding: 4px 6px;
+  border: 1px solid #9ba69f;
+  border-radius: 3px;
+  background: #f7f9f7;
+  font: 750 9px/1 Consolas, monospace;
+  white-space: nowrap;
+}
+
+.compatibility-required {
+  color: #56605a;
+}
+
+.compatibility-description,
+.compatibility-message {
+  margin: 7px 0 0;
+  color: #5f6762;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.compatibility-target {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 9px;
+  color: #7a827d;
+  font-size: 10px;
+}
+
+.compatibility-target code {
+  overflow-wrap: anywhere;
+}
+
+.compatibility-state[data-state="applied"],
+.compatibility-state[data-state="not-needed"] {
+  border-color: #73a58d;
+  color: #146b4c;
+  background: #f1faf5;
+}
+
+.compatibility-state[data-state="failed"],
+.compatibility-state[data-state="unsupported"] {
+  border-color: #c5a7a7;
+  color: #9d2d2d;
+  background: #fffafa;
+}
+
+.compatibility-state[data-state="pending"] {
+  color: #77683c;
+  background: #fffdf5;
+}
+
 .page-heading-row,
 .save-section-heading {
   display: flex;
@@ -1524,7 +1709,7 @@ p {
 
   .manager-nav {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 4px;
     padding: 9px 0 0;
   }
@@ -1589,6 +1774,38 @@ p {
 
   .save-summary dd {
     font-size: 18px;
+  }
+
+  .compatibility-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compatibility-summary div {
+    padding: 13px 10px;
+    border-bottom: 1px solid #ccd2ce;
+  }
+
+  .compatibility-summary div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .compatibility-summary div:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  .compatibility-list-heading {
+    display: none;
+  }
+
+  .compatibility-item {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+    padding: 16px 4px;
+  }
+
+  .compatibility-state {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .save-storage-item {

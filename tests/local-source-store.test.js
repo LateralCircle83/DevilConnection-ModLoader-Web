@@ -3,8 +3,8 @@
 const assert = require('node:assert/strict')
 
 global.window = {}
-require('../js/core/namespace.js')
-require('../js/storage/local-source-store.js')
+require('../js/kernel/namespace.js')
+require('../js/shell/local-source-store.js')
 
 function createIndexedDB() {
   const values = new Map()

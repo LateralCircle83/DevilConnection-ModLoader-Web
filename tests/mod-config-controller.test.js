@@ -11,9 +11,9 @@ global.window = {
     removeItem(key) { values.delete(key) },
   },
 }
-require('../js/core/namespace.js')
+require('../js/kernel/namespace.js')
 require('../js/mods/mod-config-store.js')
-require('../js/player/player-controller.js')
+require('../js/shell/player-controller.js')
 
 async function main() {
   const state = { closed: false, error: '', opened: null, status: '' }

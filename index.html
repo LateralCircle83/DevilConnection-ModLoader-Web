@@ -6,35 +6,40 @@
     <meta name="color-scheme" content="light" />
     <title>DevilConnection Modloader web</title>
     <link rel="icon" href="./favicon.ico" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20260813a" />
-    <script defer src="./js/core/namespace.js"></script>
+    <link rel="stylesheet" href="./styles.css?v=20260813c" />
+    <script defer src="./js/kernel/namespace.js"></script>
     <script defer src="./js/vendor/jszip.min.js"></script>
     <script defer src="./js/vendor/lz-string.min.js"></script>
-    <script defer src="./js/core/resource-path.js"></script>
-    <script defer src="./js/archive/asar-archive.js"></script>
-    <script defer src="./js/vfs/layered-vfs.js"></script>
-    <script defer src="./js/assets/object-url-registry.js"></script>
-    <script defer src="./js/assets/style-processor.js"></script>
-    <script defer src="./js/assets/asset-resolver.js"></script>
+    <script defer src="./js/kernel/resource-path.js"></script>
+    <script defer src="./js/kernel/asar-archive.js"></script>
+    <script defer src="./js/kernel/layered-vfs.js"></script>
+    <script defer src="./js/kernel/object-url-registry.js"></script>
+    <script defer src="./js/kernel/style-processor.js"></script>
+    <script defer src="./js/kernel/asset-resolver.js"></script>
     <script defer src="./js/mods/mod-config-store.js"></script>
     <script defer src="./js/mods/mod-package.js?v=20260812a"></script>
     <script defer src="./js/mods/mod-plan.js"></script>
-    <script defer src="./js/runtime/resource-rewriter.js"></script>
-    <script defer src="./js/runtime/browser-runtime.js?v=20260812d"></script>
-    <script defer src="./js/storage/browser-save-store.js?v=20260813c"></script>
-    <script defer src="./js/storage/save-manager.js?v=20260813c"></script>
-    <script defer src="./js/storage/save-manager-controller.js?v=20260813c"></script>
-    <script defer src="./js/storage/local-source-store.js?v=20260812a"></script>
-    <script defer src="./js/compat/browser-api.js?v=20260812a"></script>
-    <script defer src="./js/compat/tyrano-save-adapter.js"></script>
+    <script defer src="./js/kernel/resource-rewriter.js"></script>
+    <script defer src="./js/kernel/browser-runtime.js?v=20260812d"></script>
+    <script defer src="./js/kernel/browser-save-store.js?v=20260813c"></script>
+    <script defer src="./js/shell/save-manager.js?v=20260813c"></script>
+    <script defer src="./js/shell/save-manager-controller.js?v=20260813c"></script>
+    <script defer src="./js/shell/local-source-store.js?v=20260812a"></script>
+    <script defer src="./js/kernel/browser-api.js?v=20260812a"></script>
+    <script defer src="./js/kernel/tyrano-save-adapter.js"></script>
     <script defer src="./js/mods/mod-runtime.js?v=20260812a"></script>
-    <script defer src="./js/compat/tyrano-adapter.js?v=20260811c"></script>
-    <script defer src="./js/game/devil-connection-profile.js?v=20260812a"></script>
-    <script defer src="./js/game/game-document.js?v=20260811b"></script>
-    <script defer src="./js/ui/readme-view.js?v=20260813a"></script>
-    <script defer src="./js/ui/shell-view.js?v=20260813c"></script>
-    <script defer src="./js/player/player-controller.js?v=20260813a"></script>
-    <script defer src="./js/app.js?v=20260813a"></script>
+    <script defer src="./js/kernel/tyrano-adapter.js?v=20260811c"></script>
+    <script defer src="./js/profiles/profile-runner.js?v=20260813a"></script>
+    <script defer src="./js/profiles/devil-connection-apng.js?v=20260813a"></script>
+    <script defer src="./js/profiles/devil-connection.js?v=20260813a"></script>
+    <script defer src="./js/kernel/game-document.js?v=20260811b"></script>
+    <script defer src="./js/shell/readme-view.js?v=20260813a"></script>
+    <script defer src="./js/shell/shell-view.js?v=20260813c"></script>
+    <script defer src="./js/shell/compatibility-view.js?v=20260813a"></script>
+    <script defer src="./js/shell/session-preparer.js?v=20260813a"></script>
+    <script defer src="./js/shell/player-controller.js?v=20260813b"></script>
+    <script defer src="./js/shell/compatibility-controller.js?v=20260813a"></script>
+    <script defer src="./js/shell/app.js?v=20260813a"></script>
   </head>
   <body>
     <main id="loader-view" class="manager-view">
@@ -74,6 +79,19 @@
             模组
           </button>
           <button
+            id="manager-tab-compatibility"
+            class="manager-tab"
+            type="button"
+            role="tab"
+            aria-controls="manager-page-compatibility"
+            aria-selected="false"
+            data-page="compatibility"
+            tabindex="-1"
+          >
+            <span aria-hidden="true">03</span>
+            兼容性
+          </button>
+          <button
             id="manager-tab-saves"
             class="manager-tab"
             type="button"
@@ -83,7 +101,7 @@
             data-page="saves"
             tabindex="-1"
           >
-            <span aria-hidden="true">03</span>
+            <span aria-hidden="true">04</span>
             存档
           </button>
           <button
@@ -96,7 +114,7 @@
             data-page="about"
             tabindex="-1"
           >
-            <span aria-hidden="true">04</span>
+            <span aria-hidden="true">05</span>
             关于
           </button>
         </nav>
@@ -213,6 +231,42 @@
           <p class="mod-trust-note">
             带有 hook.js 的代码模组会在游戏页面中运行，请只载入可信来源的文件。
           </p>
+        </section>
+
+        <section
+          id="manager-page-compatibility"
+          class="manager-page"
+          role="tabpanel"
+          aria-labelledby="manager-tab-compatibility"
+          data-page="compatibility"
+          hidden
+        >
+          <header class="page-heading-row">
+            <div>
+              <p class="section-kicker">GAME PROFILE</p>
+              <h1>兼容性</h1>
+            </div>
+            <button id="export-compatibility" class="compact-action" type="button">导出诊断</button>
+          </header>
+          <p class="page-lead">显示当前游戏资源所需的浏览器兼容转换及检查结果。</p>
+
+          <dl class="compatibility-summary">
+            <div><dt>游戏档案</dt><dd id="compatibility-profile">Devil Connection</dd></div>
+            <div><dt>游戏版本</dt><dd id="compatibility-version">--</dd></div>
+            <div><dt>必要补丁</dt><dd id="compatibility-count">--</dd></div>
+            <div><dt>整体状态</dt><dd id="compatibility-status" data-state="idle">等待检查</dd></div>
+          </dl>
+
+          <div class="compatibility-list-heading" aria-hidden="true">
+            <span>必要转换</span>
+            <span>检查状态</span>
+          </div>
+          <div id="compatibility-list" class="compatibility-list">
+            <div class="compatibility-empty">
+              <strong>等待核心归档</strong>
+              <span>载入游戏后会检查必要的浏览器兼容转换</span>
+            </div>
+          </div>
         </section>
 
         <section

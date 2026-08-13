@@ -3,9 +3,9 @@
 const assert = require('node:assert/strict')
 
 global.window = {}
-require('../js/core/namespace.js')
-require('../js/storage/save-manager.js')
-require('../js/storage/save-manager-controller.js')
+require('../js/kernel/namespace.js')
+require('../js/shell/save-manager.js')
+require('../js/shell/save-manager-controller.js')
 
 async function main() {
   const state = { busy: [], confirmation: true, downloaded: null, rendered: null, status: null }

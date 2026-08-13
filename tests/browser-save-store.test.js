@@ -84,8 +84,8 @@ function createTarget(indexedDB) {
 }
 
 global.window = {}
-require('../js/core/namespace.js')
-require('../js/storage/browser-save-store.js')
+require('../js/kernel/namespace.js')
+require('../js/kernel/browser-save-store.js')
 
 async function main() {
   const indexedDB = createIndexedDB()

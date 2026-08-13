@@ -3,8 +3,8 @@
 const assert = require('node:assert/strict')
 
 global.window = { addEventListener() {}, console }
-require('../js/core/namespace.js')
-require('../js/player/player-controller.js')
+require('../js/kernel/namespace.js')
+require('../js/shell/player-controller.js')
 
 async function main() {
   const coreFile = { name: 'app.asar' }

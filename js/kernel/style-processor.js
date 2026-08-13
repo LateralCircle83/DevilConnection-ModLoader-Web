@@ -41,9 +41,10 @@
     var resolver = this.resolver
     var paths = resolver.list('.css')
     var preparedCount = 0
+    var completed = new Set()
 
     async function prepare(path, ancestors) {
-      if (resolver.hasPrepared(path) || ancestors.has(path)) return
+      if (completed.has(path) || ancestors.has(path)) return
       var nextAncestors = new Set(ancestors)
       nextAncestors.add(path)
       var css = await resolver.readText(path)
@@ -52,6 +53,7 @@
         await prepare(dependencies[index], nextAncestors)
       }
       resolver.prepareText(path, processor.rewrite(css, path), Path.mimeForPath(path))
+      completed.add(path)
       preparedCount++
       if (onProgress) onProgress(preparedCount, paths.length, path)
       if (preparedCount % 4 === 0) await new Promise(function (resolve) { setTimeout(resolve, 0) })

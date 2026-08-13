@@ -8,7 +8,7 @@
     if (!vfs) throw new TypeError('AssetResolver requires a VFS')
     this.vfs = vfs
     this.registry = new DCWeb.ObjectUrlRegistry()
-    this.preparedKeys = new Map()
+    this.preparedAssets = new Map()
     this.styleProcessor = new DCWeb.StyleProcessor(this)
   }
 
@@ -25,11 +25,17 @@
   }
 
   AssetResolver.prototype.getBlob = function (input, basePath) {
-    return this.vfs.getBlob(input, basePath)
+    var resolved = this.resolve(input, basePath)
+    if (!resolved) return null
+    var prepared = this.preparedAssets.get(this.keyFor(resolved))
+    return prepared ? prepared.blob : this.vfs.getBlob(input, basePath)
   }
 
   AssetResolver.prototype.readText = function (input, basePath) {
-    return this.vfs.readText(input, basePath)
+    var resolved = this.resolve(input, basePath)
+    if (!resolved) return this.vfs.readText(input, basePath)
+    var prepared = this.preparedAssets.get(this.keyFor(resolved))
+    return prepared ? Promise.resolve(prepared.text) : this.vfs.readText(input, basePath)
   }
 
   AssetResolver.prototype.list = function (suffix) {
@@ -42,15 +48,17 @@
 
   AssetResolver.prototype.hasPrepared = function (input, basePath) {
     var resolved = this.resolve(input, basePath)
-    return Boolean(resolved && this.preparedKeys.has(this.keyFor(resolved)))
+    return Boolean(resolved && this.preparedAssets.has(this.keyFor(resolved)))
   }
 
   AssetResolver.prototype.prepareText = function (input, text, mimeType, basePath) {
     var resolved = this.resolve(input, basePath)
     if (!resolved) throw new Error('Cannot prepare a missing VFS asset: ' + input)
     var key = this.keyFor(resolved)
-    this.preparedKeys.set(key, true)
-    return this.registry.replace(key, resolved.path, new Blob([text], { type: mimeType || Path.mimeForPath(resolved.path) }))
+    var preparedText = String(text)
+    var blob = new Blob([preparedText], { type: mimeType || Path.mimeForPath(resolved.path) })
+    this.preparedAssets.set(key, { blob: blob, text: preparedText })
+    return this.registry.replace(key, resolved.path, blob)
   }
 
   AssetResolver.prototype.getObjectUrl = function (input, basePath) {
@@ -73,7 +81,7 @@
 
   AssetResolver.prototype.release = function () {
     this.registry.release()
-    this.preparedKeys.clear()
+    this.preparedAssets.clear()
   }
 
   DCWeb.AssetResolver = AssetResolver

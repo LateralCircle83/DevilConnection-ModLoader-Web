@@ -9,6 +9,7 @@
 - 直接读取原版 `app.asar`，不向磁盘解包或修改归档
 - 在浏览器中运行 TyranoScript 游戏
 - 载入本地 DCML 模组 ASAR，并调整启用状态和覆盖顺序
+- 显示游戏必要兼容转换的检查结果及实际资源来源
 - 在支持本地文件句柄的浏览器中记住核心与模组选择
 - 兼容游戏需要的部分 Electron 接口
 - 使用 IndexedDB 保存游戏存档
@@ -26,7 +27,7 @@
 - 游戏安装目录中的 `app.asar`，通常位于 `resources\app.asar`
 - 可选的 DCML 模组 `.asar` 文件
 - 较新的 Chrome、Edge 或其他 Chromium 系浏览器
-- Python 3，仅在使用附带的临时静态服务器时需要
+- Node.js，仅在使用附带的临时静态服务器时需要
 
 ## 启动方法
 
@@ -34,10 +35,11 @@
 
 1. 双击 `start_server.bat`。
 2. 保持命令窗口开启。
-3. 在浏览器访问 `http://127.0.0.1:4173/`。
+3. 在本机浏览器访问脚本显示的 `Local` 地址；同一局域网内的设备可访问脚本显示的 `LAN` 地址。
 4. 点击“载入核心 ASAR”，选择自己游戏目录中的归档。
 5. 可在“模组”页面添加模组、切换启用状态或调整顺序。
-6. 回到“启动”页面，点击“开始游戏”。
+6. 可在“兼容性”页面查看当前游戏与模组组合的必要转换状态。
+7. 回到“启动”页面，点击“开始游戏”。
 
 也可以指定其他端口：
 
@@ -46,6 +48,8 @@ start_server.bat 8080
 ```
 
 部分浏览器允许直接打开 `index.html`，但使用本地 HTTP 地址通常具有更稳定的资源加载行为。
+
+服务器仅监听当前电脑的网络接口，并只提供网页运行必需的项目文件，不会提供项目目录中的 ASAR、Git 数据或目录列表。首次允许局域网访问时，Windows 防火墙可能询问是否允许 Node.js 通信，请仅对可信的专用网络放行。通过另一台设备打开网页时，ASAR 仍需由那台设备的浏览器自行选择，不会从服务器电脑自动传输。
 
 游戏运行后，左上角按钮可以打开全屏菜单，查看当前归档信息、重新载入游戏或退出会话。
 
@@ -58,6 +62,12 @@ start_server.bat 8080
 在支持 File System Access API 的 Chrome、Edge 等浏览器中，页面会记住核心归档、模组顺序和启用状态。刷新后若读取权限仍有效会自动恢复；浏览器要求重新确认权限时，点击“恢复上次选择”即可。项目只保存浏览器提供的本地文件句柄，不会把 ASAR 内容复制到 IndexedDB。移动或删除原文件、清除站点数据、更换地址或使用不支持该接口的浏览器后，需要重新选择文件。
 
 带有 `hook.js` 的模组会在游戏页面中执行代码，请只载入可信来源的文件。带有 `config.schema.json` 的模组可在模组列表中打开配置表单；配置保存在当前浏览器来源中，并按原 DCML `plugins/config/<模组文件名>.json` 约定提供给模组读取。存档仍不会记录使用过的模组组合。
+
+## 兼容性
+
+载入核心或改变模组列表后，管理器会针对最终生效的资源检查浏览器运行所必需的转换。“兼容性”页面会列出转换目标、实际来源和处理结果；若同一路径已被模组覆盖，来源会显示对应模组。
+
+这些转换只发生在当前页面的内存中，不会写回核心或模组 ASAR，也不能在页面中关闭。必要转换无法安全应用时，管理器会阻止开始游戏并自动显示失败项，避免继续执行结构不受支持的脚本。“导出诊断”只包含游戏版本、已启用模组标识和转换状态，不包含本地文件路径、文件句柄、归档内容或游戏源码。
 
 ## 存档
 
@@ -97,9 +107,9 @@ start_server.bat 8080
 
 ## 常见问题
 
-### 双击服务器脚本后提示找不到 Python
+### 双击服务器脚本后提示找不到 Node.js
 
-安装 Python 3 并确保 `python.exe` 或 `py.exe` 已加入 PATH，然后重新运行 `start_server.bat`。
+安装 Node.js 并确保 `node.exe` 已加入 PATH，然后重新运行 `start_server.bat`。
 
 ### 选择文件后提示不是受支持的归档
 
@@ -128,6 +138,9 @@ node tests/save-manager.test.js
 node tests/save-manager-controller.test.js
 node tests/local-source-store.test.js
 node tests/source-restore-controller.test.js
+node tests/profile-runner.test.js
+node tests/session-preparer.test.js
+node tests/compatibility-controller.test.js
 node tests/start-gate.test.js
 node tests/player-controller.test.js
 ```
