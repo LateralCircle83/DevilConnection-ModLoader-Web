@@ -69,7 +69,22 @@ async function testFragmentsAndReservedFileNames() {
   assert.equal(objectUrl.endsWith('#symbol'), true)
   assert.equal(objectUrl.includes('?v=4'), false)
   assert.equal(resolver.restoreObjectUrls(objectUrl), 'data/image/icon%23100%25.svg#symbol')
+  const stats = resolver.getObjectUrlStats()
+  assert.equal(stats.count, 1)
+  assert.equal(stats.logicalBytes, Buffer.byteLength(bytes))
+  assert.equal(stats.peakCount, 1)
+  assert.equal(stats.peakLogicalBytes, Buffer.byteLength(bytes))
+  assert.deepEqual(Object.keys(stats.categories), ['style', 'image', 'audio', 'video', 'font', 'text', 'binary'])
+  assert.deepEqual(stats.categories.image, {
+    count: 1,
+    logicalBytes: Buffer.byteLength(bytes),
+    peakCount: 1,
+    peakLogicalBytes: Buffer.byteLength(bytes),
+  })
   resolver.release()
+  assert.equal(resolver.getObjectUrlStats().count, 0)
+  assert.equal(resolver.getObjectUrlStats().categories.image.count, 0)
+  assert.equal(resolver.getObjectUrlStats().categories.image.peakCount, 1)
 }
 
 async function testNestedStyles() {
@@ -77,17 +92,23 @@ async function testNestedStyles() {
   const theme = '.hero{background:url("../image/hero.png?v=2")}'
   const icon = '<svg></svg>'
   const image = 'png'
-  const all = main + theme + icon + image
+  const unused = '.unused{background:url("../image/unused.png")}'
+  const unusedImage = 'unused'
+  const all = main + theme + icon + image + unused + unusedImage
   const entries = new Map([
     entry('data/css/main.css', 0, Buffer.byteLength(main)),
     entry('data/css/theme.css', Buffer.byteLength(main), Buffer.byteLength(theme)),
     entry('data/image/icons.svg', Buffer.byteLength(main + theme), Buffer.byteLength(icon)),
     entry('data/image/hero.png', Buffer.byteLength(main + theme + icon), Buffer.byteLength(image)),
+    entry('data/css/unused.css', Buffer.byteLength(main + theme + icon + image), Buffer.byteLength(unused)),
+    entry('data/image/unused.png', Buffer.byteLength(main + theme + icon + image + unused), Buffer.byteLength(unusedImage)),
   ])
   const archive = new AsarArchive(new Blob([all]), {}, 0, entries)
 
   const resolver = createResolver(archive)
   await resolver.prepareStyles()
+  assert.equal(resolver.getObjectUrlStats().count, 0)
+  assert.equal(resolver.hasPrepared('data/css/unused.css'), true)
   const mainUrl = resolver.getObjectUrl('data/css/main.css')
   const themeUrl = resolver.getObjectUrl('data/css/theme.css')
   const mainText = await (await fetch(mainUrl)).text()
@@ -99,6 +120,39 @@ async function testNestedStyles() {
   assert.match(mainText, /blob:[^"')]+#mark/)
   assert.match(themeText, /url\("blob:[^"')]+"\)/)
   assert.equal(themeText.includes('?v=2'), false)
+  const stats = resolver.getObjectUrlStats()
+  assert.equal(stats.count, 4)
+  assert.equal(stats.categories.style.count, 2)
+  assert.equal(stats.categories.image.count, 2)
+  assert.equal(Array.from(resolver.registry.pathsByUrl.values()).includes('data/css/unused.css'), false)
+  assert.equal(Array.from(resolver.registry.pathsByUrl.values()).includes('data/image/unused.png'), false)
+  resolver.release()
+}
+
+async function testCircularStylesDoNotRetainRevokedUrls() {
+  const first = '@import "b.css";\n.a{color:red}'
+  const second = '@import "a.css";\n.b{color:blue}'
+  const archive = new AsarArchive(
+    new Blob([first, second]),
+    {},
+    0,
+    new Map([
+      entry('data/a.css', 0, Buffer.byteLength(first)),
+      entry('data/b.css', Buffer.byteLength(first), Buffer.byteLength(second)),
+    ]),
+  )
+  const resolver = createResolver(archive)
+
+  await resolver.prepareStyles()
+  const firstUrl = resolver.getObjectUrl('data/a.css')
+  const secondUrl = resolver.getObjectUrl('data/b.css')
+  const firstText = await (await fetch(firstUrl)).text()
+  const secondText = await (await fetch(secondUrl)).text()
+
+  assert.equal(firstText.includes(secondUrl), true)
+  assert.equal(secondText.includes('data:text/css;charset=utf-8,'), true)
+  assert.equal(secondText.includes('blob:'), false)
+  assert.equal(resolver.getObjectUrlStats().count, 2)
   resolver.release()
 }
 
@@ -114,10 +168,56 @@ async function testPreparedTextIsTheActiveSessionResource() {
   const patched = '.hero{color:red}'
 
   resolver.prepareText('data/css/main.css', patched, 'text/css')
+  assert.equal(resolver.getObjectUrlStats().count, 0)
   await resolver.prepareStyles()
+  assert.equal(resolver.getObjectUrlStats().count, 0)
   assert.equal(await resolver.readText('data/css/main.css'), patched)
   assert.equal(await resolver.getBlob('data/css/main.css').text(), patched)
   assert.equal(await (await fetch(resolver.getObjectUrl('data/css/main.css'))).text(), patched)
+  assert.equal(resolver.getObjectUrlStats().count, 1)
+  assert.throws(
+    () => resolver.prepareText('data/css/main.css', '.hero{color:blue}', 'text/css'),
+    /after publishing its object URL/,
+  )
+  resolver.release()
+}
+
+async function testXmlHttpRequestUsesLogicalResponseUrl() {
+  const source = 'small scenario'
+  const archive = new AsarArchive(
+    new Blob([source]),
+    {},
+    0,
+    new Map([entry('data/scenario/start.ks', 0, Buffer.byteLength(source))]),
+  )
+  const resolver = createResolver(archive)
+
+  function Event(type) { this.type = type }
+  function NativeXMLHttpRequest() {}
+  const target = {
+    Blob,
+    Event,
+    URL,
+    XMLHttpRequest: NativeXMLHttpRequest,
+    document: {
+      baseURI: 'http://127.0.0.1:4173/index.html',
+      documentElement: { setAttribute() {} },
+    },
+    location: { href: 'about:srcdoc' },
+  }
+  loadRuntime().install(target, resolver)
+
+  const xhr = await new Promise(function (resolve) {
+    const request = new target.XMLHttpRequest()
+    request.open('GET', 'data/scenario/start.ks?v=4')
+    request.addEventListener('loadend', function () { resolve(request) })
+    request.send()
+  })
+
+  assert.equal(xhr.status, 200)
+  assert.equal(xhr.responseText, source)
+  assert.equal(xhr.responseURL, 'http://127.0.0.1:4173/data/scenario/start.ks')
+  assert.equal(resolver.getObjectUrlStats().count, 0)
   resolver.release()
 }
 
@@ -154,8 +254,32 @@ function testPublicContracts() {
   assert.equal(window.DCCompat, undefined)
   assert.deepEqual(
     Object.keys(window.DCWeb.Runtime).sort(),
-    ['copyArrayBufferToRealm', 'install', 'installJQuery', 'rewriteCssValue', 'rewriteMarkup', 'rewriteSrcset'],
+    ['copyArrayBufferToRealm', 'install', 'installJQuery', 'readArrayBufferInRealm', 'rewriteCssValue', 'rewriteMarkup', 'rewriteSrcset'],
   )
+}
+
+async function testRealmLocalArrayBufferReadAvoidsCopyFallback() {
+  let blobConstructions = 0
+  let copies = 0
+  function RealmBlob(parts, options) {
+    blobConstructions++
+    return new Blob(parts, options)
+  }
+  function CountingUint8Array(length) {
+    copies++
+    return new Uint8Array(length)
+  }
+  const target = {
+    ArrayBuffer,
+    Blob: RealmBlob,
+    Uint8Array: CountingUint8Array,
+  }
+
+  const value = await loadRuntime().readArrayBufferInRealm(target, new Blob(['realm bytes']))
+  assert.equal(value instanceof target.ArrayBuffer, true)
+  assert.equal(Buffer.from(value).toString(), 'realm bytes')
+  assert.equal(blobConstructions, 1)
+  assert.equal(copies, 0)
 }
 
 function testRuntimeRewriters() {
@@ -491,7 +615,10 @@ async function main() {
   await testObjectUrlRoundTrip()
   await testFragmentsAndReservedFileNames()
   await testNestedStyles()
+  await testCircularStylesDoNotRetainRevokedUrls()
   await testPreparedTextIsTheActiveSessionResource()
+  await testXmlHttpRequestUsesLogicalResponseUrl()
+  await testRealmLocalArrayBufferReadAvoidsCopyFallback()
   testLayerPrecedence()
   testRuntimeRewriters()
   testRuntimeStyleReadCompatibility()

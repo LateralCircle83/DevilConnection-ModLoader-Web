@@ -2,6 +2,7 @@
   'use strict'
 
   var DCWeb = global.DCWeb
+  var Path = DCWeb.ResourcePath
   var Rewriter = DCWeb.ResourceRewriter
   var makeResolver = Rewriter.makeResolver
   var rewriteCssValue = Rewriter.rewriteCssValue
@@ -95,9 +96,34 @@
   }
 
   function readArrayBufferInRealm(target, blob) {
-    return blob.arrayBuffer().then(function (value) {
+    var sourceBlob = blob
+    if (typeof target.Blob === 'function') {
+      try {
+        sourceBlob = blob instanceof target.Blob
+          ? blob
+          : new target.Blob([blob], { type: blob.type || '' })
+      } catch (error) {}
+    }
+    return sourceBlob.arrayBuffer().then(function (value) {
+      if (typeof target.ArrayBuffer === 'function') {
+        try {
+          if (value instanceof target.ArrayBuffer) return value
+        } catch (error) {}
+      }
       return copyArrayBufferToRealm(target, value)
     })
+  }
+
+  function logicalResponseUrl(target, vfs, input) {
+    var path = typeof vfs.findPath === 'function' ? vfs.findPath(input) : ''
+    if (!path) return String(input || '')
+    var encoded = Path.encode(path)
+    var baseUrl = target.document && target.document.baseURI
+    if (!baseUrl && target.location) baseUrl = target.location.href
+    if (target.URL && baseUrl) {
+      try { return new target.URL(encoded, baseUrl).href } catch (error) {}
+    }
+    return encoded
   }
 
   function installFetch(target, vfs) {
@@ -303,7 +329,7 @@
           var blob = vfs.getBlob(xhr._url)
           xhr.status = 200
           xhr.statusText = 'OK'
-          xhr.responseURL = vfs.getObjectUrl(xhr._url)
+          xhr.responseURL = logicalResponseUrl(target, vfs, xhr._url)
           xhr._responseHeaders = {
             'content-length': String(blob.size),
             'content-type': xhr._mimeType || blob.type || 'application/octet-stream',
@@ -780,6 +806,7 @@
     copyArrayBufferToRealm: copyArrayBufferToRealm,
     install: install,
     installJQuery: installJQuery,
+    readArrayBufferInRealm: readArrayBufferInRealm,
     rewriteCssValue: rewriteCssValue,
     rewriteMarkup: rewriteMarkup,
     rewriteSrcset: rewriteSrcset,

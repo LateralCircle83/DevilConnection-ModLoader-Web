@@ -5,7 +5,9 @@ const assert = require('node:assert/strict')
 global.window = {}
 require('../js/kernel/namespace.js')
 require('../js/kernel/resource-path.js')
+require('../js/kernel/resource-rewriter.js')
 require('../js/mods/mod-config-store.js')
+require('../js/kernel/browser-runtime.js')
 
 window.DCWeb.BrowserSaveStore = {
   create() {
@@ -34,6 +36,8 @@ function createStorage() {
 function createTarget(storage) {
   return {
     addEventListener() {},
+    ArrayBuffer,
+    Blob,
     Function,
     TextEncoder,
     Uint8Array,
@@ -85,6 +89,37 @@ function testBrowserApiSharesConfigStorage() {
   assert.equal(api.existFile(translationPath), false)
 }
 
-testPathMapping()
-testBrowserApiSharesConfigStorage()
-console.log('Mod config tests passed')
+async function testBrowserApiReadsBinaryInTargetRealm() {
+  const target = createTarget(createStorage())
+  let blobConstructions = 0
+  let copies = 0
+  target.Blob = function (parts, options) {
+    blobConstructions++
+    return new Blob(parts, options)
+  }
+  target.Uint8Array = function (length) {
+    copies++
+    return new Uint8Array(length)
+  }
+  const api = window.DCWeb.BrowserApi.install(target, {
+    getBlob() { return new Blob(['binary api']) },
+  }, 'token')
+
+  const value = await api.readFileBin('data/test.bin')
+  assert.equal(value instanceof target.ArrayBuffer, true)
+  assert.equal(Buffer.from(value).toString(), 'binary api')
+  assert.equal(blobConstructions, 1)
+  assert.equal(copies, 0)
+}
+
+async function main() {
+  testPathMapping()
+  testBrowserApiSharesConfigStorage()
+  await testBrowserApiReadsBinaryInTargetRealm()
+  console.log('Mod config tests passed')
+}
+
+main().catch(function (error) {
+  console.error(error)
+  process.exitCode = 1
+})

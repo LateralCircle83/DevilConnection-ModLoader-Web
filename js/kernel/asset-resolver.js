@@ -27,6 +27,7 @@
   AssetResolver.prototype.getBlob = function (input, basePath) {
     var resolved = this.resolve(input, basePath)
     if (!resolved) return null
+    this.styleProcessor.materialize(resolved.path)
     var prepared = this.preparedAssets.get(this.keyFor(resolved))
     return prepared ? prepared.blob : this.vfs.getBlob(input, basePath)
   }
@@ -34,6 +35,7 @@
   AssetResolver.prototype.readText = function (input, basePath) {
     var resolved = this.resolve(input, basePath)
     if (!resolved) return this.vfs.readText(input, basePath)
+    this.styleProcessor.materialize(resolved.path)
     var prepared = this.preparedAssets.get(this.keyFor(resolved))
     return prepared ? Promise.resolve(prepared.text) : this.vfs.readText(input, basePath)
   }
@@ -48,26 +50,30 @@
 
   AssetResolver.prototype.hasPrepared = function (input, basePath) {
     var resolved = this.resolve(input, basePath)
-    return Boolean(resolved && this.preparedAssets.has(this.keyFor(resolved)))
+    return Boolean(resolved && (
+      this.preparedAssets.has(this.keyFor(resolved)) ||
+      this.styleProcessor.hasTemplate(resolved.path)
+    ))
   }
 
   AssetResolver.prototype.prepareText = function (input, text, mimeType, basePath) {
     var resolved = this.resolve(input, basePath)
     if (!resolved) throw new Error('Cannot prepare a missing VFS asset: ' + input)
     var key = this.keyFor(resolved)
+    if (this.registry.get(key)) throw new Error('Cannot prepare an asset after publishing its object URL: ' + resolved.path)
     var preparedText = String(text)
     var blob = new Blob([preparedText], { type: mimeType || Path.mimeForPath(resolved.path) })
     this.preparedAssets.set(key, { blob: blob, text: preparedText })
-    return this.registry.replace(key, resolved.path, blob)
   }
 
   AssetResolver.prototype.getObjectUrl = function (input, basePath) {
     if (typeof input !== 'string' || Path.isOpaqueOrExternalUrl(input) || input.charAt(0) === '#') return input
     var resolved = this.resolve(input, basePath)
     if (!resolved) return input
+    this.styleProcessor.materialize(resolved.path)
     var key = this.keyFor(resolved)
     var url = this.registry.get(key)
-    if (!url) url = this.registry.create(key, resolved.path, this.vfs.getBlob(input, basePath))
+    if (!url) url = this.registry.create(key, resolved.path, this.getBlob(input, basePath))
     return url + Path.fragmentOf(input)
   }
 
@@ -79,9 +85,14 @@
     return this.styleProcessor.prepareAll(onProgress)
   }
 
+  AssetResolver.prototype.getObjectUrlStats = function () {
+    return this.registry.stats()
+  }
+
   AssetResolver.prototype.release = function () {
     this.registry.release()
     this.preparedAssets.clear()
+    this.styleProcessor.release()
   }
 
   DCWeb.AssetResolver = AssetResolver

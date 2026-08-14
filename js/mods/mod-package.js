@@ -42,8 +42,16 @@
     this.enabled = true
     this.hasHook = archive.has('hook.js')
     this.hasConfig = Boolean(schema)
+    this.runtimeTextPaths = archive.list().filter(function (path) {
+      return Boolean(TEXT_EXTENSIONS[Path.extensionOf(path)])
+    })
+    this.runtimeTextBytes = this.runtimeTextPaths.reduce(function (total, path) {
+      var entry = archive.getEntryByPath(path)
+      return total + (entry ? entry.size : 0)
+    }, 0)
     this.textFiles = new Map()
     this.runtimeReady = null
+    this.runtimeGeneration = 0
     this.sourceHandle = null
   }
 
@@ -80,20 +88,28 @@
   ModPackage.prototype.prepareRuntime = function () {
     if (this.runtimeReady) return this.runtimeReady
     var mod = this
-    var paths = this.archive.list().filter(function (path) {
-      return Boolean(TEXT_EXTENSIONS[Path.extensionOf(path)])
-    })
+    var paths = this.runtimeTextPaths
+    var generation = ++this.runtimeGeneration
 
     this.runtimeReady = (async function () {
+      var textFiles = new Map()
       for (var offset = 0; offset < paths.length; offset += 8) {
         await Promise.all(paths.slice(offset, offset + 8).map(async function (path) {
           var text = await mod.archive.readTextByPath(path)
-          mod.textFiles.set(path.toLowerCase(), text)
+          textFiles.set(path.toLowerCase(), text)
         }))
       }
+      if (generation !== mod.runtimeGeneration) throw new Error('模组运行时文本缓存准备已取消：' + mod.name)
+      mod.textFiles = textFiles
       return mod
     })()
     return this.runtimeReady
+  }
+
+  ModPackage.prototype.releaseRuntimeCache = function () {
+    this.runtimeGeneration++
+    this.textFiles.clear()
+    this.runtimeReady = null
   }
 
   ModPackage.prototype.getText = function (path) {

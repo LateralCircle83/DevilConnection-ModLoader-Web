@@ -459,6 +459,9 @@
       var index = controller.findModIndex(id)
       if (index === -1) return false
       controller.mods[index].enabled = Boolean(enabled)
+      if (!controller.mods[index].enabled && controller.mods[index].releaseRuntimeCache) {
+        controller.mods[index].releaseRuntimeCache()
+      }
       return true
     })
   }
@@ -481,6 +484,7 @@
     this.updateModSelection(function () {
       var index = controller.findModIndex(id)
       if (index === -1) return false
+      if (controller.mods[index].releaseRuntimeCache) controller.mods[index].releaseRuntimeCache()
       controller.mods.splice(index, 1)
       return true
     })

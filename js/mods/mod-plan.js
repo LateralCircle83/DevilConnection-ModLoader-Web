@@ -2,9 +2,25 @@
   'use strict'
 
   var DCWeb = global.DCWeb
+  var RUNTIME_TEXT_WARNING_BYTES = 32 * 1024 * 1024
 
   async function create(packages) {
     var enabled = (packages || []).filter(function (mod) { return mod.enabled })
+    var runtimeTextBytes = enabled.reduce(function (total, mod) {
+      return total + (mod.runtimeTextBytes || 0)
+    }, 0)
+    var warnings = []
+    if (runtimeTextBytes >= RUNTIME_TEXT_WARNING_BYTES) {
+      warnings.push({
+        id: 'large-runtime-text-cache',
+        packageCount: enabled.length,
+        runtimeTextBytes: runtimeTextBytes,
+        thresholdBytes: RUNTIME_TEXT_WARNING_BYTES,
+      })
+      if (global.console && typeof global.console.warn === 'function') {
+        global.console.warn('[DCWeb] Enabled mod runtime text is large: ' + runtimeTextBytes + ' bytes')
+      }
+    }
     await Promise.all(enabled.map(function (mod) { return mod.prepareRuntime() }))
 
     var textFiles = new Map()
@@ -30,7 +46,9 @@
       layers: enabled.map(function (mod) { return mod.toLayer() }),
       metadata: metadata,
       packages: enabled.slice(),
+      runtimeTextBytes: runtimeTextBytes,
       textFiles: textFiles,
+      warnings: warnings,
     }
   }
 

@@ -132,6 +132,7 @@ async function testLoadOrderAndHooks() {
   assert.deepEqual(plan.hooks.map((hook) => hook.id), ['first', 'second'])
   assert.equal(plan.filePaths.get('data/shared.txt'), 'data/shared.txt')
   assert.equal(plan.textFiles.get('data/shared.txt'), 'second')
+  assert.equal(plan.runtimeTextBytes, first.runtimeTextBytes + second.runtimeTextBytes)
 
   const base = await AsarArchive.open(createAsar({ 'data/base-only.txt': 'base' }, 'base.asar'))
   const resolver = new AssetResolver(new LayeredVfs([
@@ -168,6 +169,58 @@ async function testLoadOrderAndHooks() {
   target.electronAPI.writeFileSync('C:\\game\\plugins\\config\\first.json', '{"active":false}')
   assert.deepEqual(loader.getModConfig('first'), { active: false })
   resolver.release()
+}
+
+async function testRuntimeTextCacheRelease() {
+  const mod = await ModPackage.open(createAsar({
+    'hook.js': 'window.cacheTest = true',
+    'data/scenario/cache.ks': 'cache me once',
+  }, 'cache-test.asar'), 1)
+
+  await mod.prepareRuntime()
+  assert.equal(mod.getText('data/scenario/cache.ks'), 'cache me once')
+  assert.equal(mod.runtimeTextBytes > 0, true)
+
+  mod.releaseRuntimeCache()
+  assert.equal(mod.textFiles.size, 0)
+  assert.equal(mod.runtimeReady, null)
+
+  await mod.prepareRuntime()
+  assert.equal(mod.getText('data/scenario/cache.ks'), 'cache me once')
+}
+
+async function testLargeRuntimeTextWarningPrecedesCacheRead() {
+  const messages = []
+  window.console = { warn(message) { messages.push(message) } }
+  const mod = {
+    archive: { list() { return [] } },
+    enabled: true,
+    getText() { return '' },
+    hasHook: false,
+    id: 'large-text',
+    name: 'Large Text',
+    prepareRuntime() {
+      assert.equal(messages.length, 1)
+      return Promise.resolve()
+    },
+    runtimeTextBytes: 32 * 1024 * 1024,
+    textFiles: new Map(),
+    toLayer() { return { id: 'mod:large-text', source: this.archive } },
+    version: '',
+  }
+
+  try {
+    const plan = await ModPlan.create([mod])
+    assert.equal(plan.runtimeTextBytes, mod.runtimeTextBytes)
+    assert.deepEqual(plan.warnings, [{
+      id: 'large-runtime-text-cache',
+      packageCount: 1,
+      runtimeTextBytes: mod.runtimeTextBytes,
+      thresholdBytes: 32 * 1024 * 1024,
+    }])
+  } finally {
+    delete window.console
+  }
 }
 
 async function testHooksWaitForDocumentBody() {
@@ -245,6 +298,8 @@ async function main() {
   await testHeaderLayouts()
   await testPackageMetadata()
   await testLoadOrderAndHooks()
+  await testRuntimeTextCacheRelease()
+  await testLargeRuntimeTextWarningPrecedesCacheRead()
   await testHooksWaitForDocumentBody()
   await testModBlobSaveRoundTrip()
   console.log('Mod loader tests passed')

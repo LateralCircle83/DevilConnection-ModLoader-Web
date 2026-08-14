@@ -88,12 +88,11 @@
           publishBinaryDebug(path, error)
           return Promise.reject(error)
         }
-        return blob.arrayBuffer().then(function (value) {
-          var copy = DCWeb.Runtime.copyArrayBufferToRealm(target, value)
+        return DCWeb.Runtime.readArrayBufferInRealm(target, blob).then(function (value) {
           binaryDebug.pending--
           binaryDebug.completed++
           publishBinaryDebug(path, null)
-          return copy
+          return value
         }).catch(function (error) {
           binaryDebug.pending--
           binaryDebug.failed++

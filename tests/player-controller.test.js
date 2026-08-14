@@ -78,7 +78,28 @@ async function testPreparedStorageSuspension() {
   assert.equal(suspendController.preparedSession, null)
 }
 
+function testDisabledAndRemovedModsReleaseRuntimeCache() {
+  const modView = createView()
+  const modController = new window.DCWeb.PlayerController(modView, {})
+  let releaseCount = 0
+  modController.mods = [{
+    enabled: true,
+    id: 'cache-test',
+    releaseRuntimeCache() { releaseCount++ },
+  }]
+  modController.updateModSelection = function (change) { return change() }
+
+  modController.toggleMod('cache-test', false)
+  assert.equal(releaseCount, 1)
+  assert.equal(modController.mods[0].enabled, false)
+
+  modController.removeMod('cache-test')
+  assert.equal(releaseCount, 2)
+  assert.equal(modController.mods.length, 0)
+}
+
 testPreparedStorageSuspension().then(function () {
+  testDisabledAndRemovedModsReleaseRuntimeCache()
   console.log('Player controller tests passed')
 }).catch(function (error) {
   console.error(error)
