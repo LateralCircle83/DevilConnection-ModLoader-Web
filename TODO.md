@@ -84,7 +84,7 @@
 
 ### 优先引入
 
-- [ ] **有界 Tyrano 预加载调度器**：在壳核心的 Tyrano 适配边界包装 `kag.preload()` / `preloadAll()`，限制图片、音频与视频的同时加载和解码数量，合并同一 URL 的在途任务；必须支持失败放行、超时、会话退出取消和遥测，不做永久资源缓存，也不全局拦截普通 fetch/XHR 或媒体 Range 请求。
+- [x] **有界 Tyrano 预加载调度器**：在壳核心的 Tyrano 适配边界包装 `kag.preload()` / `preloadAll()`，限制图片、音频与视频的同时加载和解码数量，合并语义相同的同 URL 在途任务；支持失败放行、30 秒超时、页面退出取消和 DOM 遥测，不做永久资源缓存，也不全局拦截普通 fetch/XHR 或媒体 Range 请求。
 - [ ] **标题循环视频队列**：串行处理 `SourceBuffer.appendBuffer()`，等待 `updateend` 后再追加；处理 `InvalidStateError`、加载失败、重复切换和退出，并在结束时解除监听、关闭 `MediaSource`、撤销 URL。归入游戏兼容档案，目标行为参考旧项目 `data/others/plugin/title_loop/main.js`。
 - [ ] **存档截图可靠收敛**：保证 `snapSave` 在截图、图片加载或 `toDataURL()` 失败时也只结束一次，并允许无缩略图存档，避免剧情永久卡住。优先通过 Tyrano 适配器包装稳定接口；只能依赖源码结构时再使用版本补丁。
 - [ ] **截图克隆隔离**：使用 html2canvas 的 `onclone` 只清理克隆文档中的文件输入或不可序列化状态，不修改正在运行的游戏 DOM。与存档截图可靠收敛一并实现。

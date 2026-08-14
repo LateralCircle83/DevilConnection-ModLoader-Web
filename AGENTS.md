@@ -56,7 +56,7 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 9. The resulting document is assigned to a non-interactive game iframe through `srcdoc` before the user starts the game.
 10. Runtime interceptors route local fetch, XHR, Worker, DOM, CSS, markup, srcset, and jQuery resource requests through the prepared resolver.
 11. `ModRuntime` installs the bounded DCML compatibility API immediately, then executes enabled `hook.js` files in UI order after `DOMContentLoaded` so `document.body` exists.
-12. `TyranoAdapter` intercepts the automatic `TYRANO.init()` call and reports readiness with the per-session launch token only after `ModRuntime.ready` settles. Do not rely on strict `MessageEvent.source` identity for `srcdoc` messages.
+12. `TyranoAdapter` installs the bounded KAG preload scheduler, intercepts the automatic `TYRANO.init()` call, and reports readiness with the per-session launch token only after `ModRuntime.ready` settles. Do not rely on strict `MessageEvent.source` identity for `srcdoc` messages.
 13. The host start button becomes enabled only after that handshake. Its trusted click synchronously calls the already-loaded same-origin iframe, unlocks audio, and starts the original `TYRANO.init()` without another overlay.
 14. Tyrano loads `Config.tjs`, the KAG runtime, and the initial scenario through VFS-backed requests.
 
@@ -70,7 +70,7 @@ The source tree has five top-level responsibility domains. Add files to the narr
 - `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; compatibility, save, source, and view modules own their corresponding manager behavior; `app.js` is composition only.
 - `js/vendor/`: third-party libraries retained without application ownership.
 
-Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, `asset-resolver.js` owns prepared resources and URL lifetime, and adapters do not absorb game-version source transforms.
+Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, `asset-resolver.js` owns prepared resources and URL lifetime, and `tyrano-preload-scheduler.js` owns only the transient bounded KAG preload queue. It must not become a permanent media cache or a global fetch/XHR/Range interceptor. Adapters do not absorb game-version source transforms.
 
 Keep behavior in the narrowest owning module. Do not create generic compatibility facades or duplicate module globals.
 
@@ -170,6 +170,7 @@ node tests\source-restore-controller.test.js
 node tests\profile-runner.test.js
 node tests\session-preparer.test.js
 node tests\compatibility-controller.test.js
+node tests\tyrano-preload-scheduler.test.js
 node tests\start-gate.test.js
 node tests\player-controller.test.js
 Get-ChildItem js -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }

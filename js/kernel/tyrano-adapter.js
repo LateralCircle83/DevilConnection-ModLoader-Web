@@ -3,6 +3,30 @@
 
   var DCWeb = global.DCWeb
 
+  function installPreloadScheduler(target, kag) {
+    if (!DCWeb.TyranoPreloadScheduler || typeof kag.preload !== 'function') return null
+    var originalPreload = kag.preload
+    var scheduler = new DCWeb.TyranoPreloadScheduler(target, function (storage, callback, options) {
+      return originalPreload.call(kag, storage, callback, options)
+    })
+
+    kag.preload = function (storage, callback, options) {
+      return scheduler.preload(storage, callback, options)
+    }
+    kag.preloadAll = function (storage, callback, options) {
+      return scheduler.preload(storage, callback, options)
+    }
+    if (typeof kag.registerPreloadCompleteCallback === 'function') {
+      kag.registerPreloadCompleteCallback = function (callback) {
+        scheduler.whenIdle(callback)
+      }
+    }
+    if (typeof target.addEventListener === 'function') {
+      target.addEventListener('pagehide', function () { scheduler.cancel() }, { once: true })
+    }
+    return scheduler
+  }
+
   function installKagAdapters(target, $, vfs) {
     var kag = target.tyrano.plugin.kag
 
@@ -136,12 +160,14 @@
     if (!$ || !target.TYRANO || !target.tyrano || !target.tyrano.plugin.kag) {
       throw new Error('Tyrano runtime was not ready for browser adaptation')
     }
+    var kag = target.tyrano.plugin.kag
 
     DCWeb.Runtime.installJQuery(target, vfs)
     target.TYRANO.cache_text = true
-    target.TYRANO.resource_concurrency = 6
+    target.TYRANO.resource_concurrency = 4
     DCWeb.TyranoSaveAdapter.install(target, $, vfs)
     installKagAdapters(target, $, vfs)
+    installPreloadScheduler(target, kag)
 
     var root = target.document && target.document.documentElement
     if (root) root.setAttribute('data-dc-launch-id', String(launchId))
