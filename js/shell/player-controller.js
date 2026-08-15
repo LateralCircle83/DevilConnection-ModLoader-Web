@@ -30,6 +30,8 @@
     this.restoreRecord = null
     this.restoringSources = false
     this.compatibilityListeners = []
+    this.reloadGeneration = 0
+    this.pendingReleaseSessions = new Set()
   }
 
   PlayerController.prototype.bind = function () {
@@ -67,8 +69,9 @@
       }
     })
     global.addEventListener('beforeunload', function () {
-      controller.releaseSession(controller.preparedSession)
-      controller.releaseSession(controller.activeSession)
+      controller.queueSessionRelease(controller.preparedSession)
+      controller.queueSessionRelease(controller.activeSession)
+      controller.releasePendingSessions()
     })
   }
 
@@ -106,8 +109,17 @@
 
   PlayerController.prototype.releaseSession = function (session) {
     if (!session || session.released) return
+    this.pendingReleaseSessions.delete(session)
     session.released = true
     session.resolver.release()
+  }
+
+  PlayerController.prototype.queueSessionRelease = function (session) {
+    if (session && !session.released) this.pendingReleaseSessions.add(session)
+  }
+
+  PlayerController.prototype.releasePendingSessions = function () {
+    Array.from(this.pendingReleaseSessions).forEach(this.releaseSession, this)
   }
 
   PlayerController.prototype.syncMods = function () {
@@ -263,7 +275,8 @@
       this.view.setProgress(88, '引擎')
       this.view.setStatus('正在后台载入游戏引擎')
       this.view.showPreparingPlayer()
-      this.view.navigate(prepared.html, function () { controller.releaseSession(previous) })
+      this.queueSessionRelease(previous)
+      this.view.navigate(prepared.html, function () { controller.releasePendingSessions() })
     } catch (error) {
       if (prepared && prepared.resolver) prepared.resolver.release()
       if (error && error.compatibility) this.publishCompatibility('failed', error)
@@ -271,7 +284,8 @@
       this.preparedSession = null
       this.publishBridge(null)
       if (previous) {
-        this.view.navigate(CLOSED_DOCUMENT, function () { controller.releaseSession(previous) })
+        this.queueSessionRelease(previous)
+        this.view.navigate(CLOSED_DOCUMENT, function () { controller.releasePendingSessions() })
       }
       throw error
     }
@@ -533,9 +547,10 @@
     this.publishBridge(null)
     this.view.setLaunchReady(false)
     if (!previous) return
+    this.queueSessionRelease(previous)
     await new Promise(function (resolve) {
       controller.view.navigate(CLOSED_DOCUMENT, function () {
-        controller.releaseSession(previous)
+        controller.releasePendingSessions()
         resolve()
       })
     })
@@ -550,11 +565,14 @@
     if (!this.activeSession) return
     var controller = this
     var previous = this.activeSession
+    this.reloadGeneration++
+    previous.restartWhenReady = false
     this.activeSession = null
     this.publishBridge(null)
     this.view.showManager(Boolean(this.baseGame))
+    this.queueSessionRelease(previous)
     this.view.navigate(CLOSED_DOCUMENT, function () {
-      controller.releaseSession(previous)
+      controller.releasePendingSessions()
       controller.prepareAfterClose()
     })
   }
@@ -562,10 +580,17 @@
   PlayerController.prototype.reload = function () {
     var session = this.activeSession
     if (!session) return
+    var controller = this
     var view = this.view
+    var generation = ++this.reloadGeneration
+    session.launchId = this.nextLaunchId++
+    session.launchToken = createLaunchToken()
     session.restartWhenReady = true
+    this.publishBridge(session)
     view.navigate(RELOADING_DOCUMENT, function () {
+      if (controller.activeSession !== session || controller.reloadGeneration !== generation) return
       global.setTimeout(function () {
+        if (controller.activeSession !== session || controller.reloadGeneration !== generation) return
         view.navigate(session.html)
       }, 0)
     })

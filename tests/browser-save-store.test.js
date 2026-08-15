@@ -20,9 +20,10 @@ function createIndexedDB(initialEntries) {
   let holdNextWrite = false
   let heldWrite = null
   let resolveHeldWrite = null
+  let closeCount = 0
   const database = {
     objectStoreNames: { contains() { return true } },
-    close() {},
+    close() { closeCount++ },
     createObjectStore() {},
     transaction(_storeName, mode) {
       const operations = []
@@ -90,6 +91,7 @@ function createIndexedDB(initialEntries) {
     },
   }
   return {
+    get closeCount() { return closeCount },
     failNextWrite() { failNextWrite = true },
     holdNextWrite() {
       holdNextWrite = true
@@ -129,6 +131,7 @@ function createTarget(indexedDB, localStorage) {
     },
     dispatchEvent() {},
     indexedDB,
+    listeners,
     localStorage: localStorage || createLocalStorage(),
     setTimeout,
   }
@@ -300,6 +303,38 @@ async function testFailedReplacementDoesNotReplay() {
   assertJournalCleared(localStorage)
 }
 
+async function testPageHideFlushesAndClosesDatabase() {
+  const indexedDB = createIndexedDB()
+  const target = createTarget(indexedDB)
+  const store = BrowserSaveStore.create(target)
+  await store.ready
+  store.setItem('save', 'before-pagehide')
+
+  target.listeners.pagehide()
+  await store.close()
+  await store.close()
+
+  assert.equal(indexedDB.values.get('save'), 'before-pagehide')
+  assert.equal(indexedDB.closeCount, 1)
+  assert.equal(store.db, null)
+}
+
+async function testFailedPageHideFlushStillClosesDatabase() {
+  const indexedDB = createIndexedDB()
+  const target = createTarget(indexedDB)
+  const store = BrowserSaveStore.create(target)
+  await store.ready
+  store.setItem('save', 'recover-next-session')
+  indexedDB.failNextWrite()
+
+  target.listeners.pagehide()
+  await assert.rejects(store.close(), /Injected IndexedDB transaction failure/)
+
+  assert.equal(indexedDB.closeCount, 1)
+  assert.equal(store.db, null)
+  assert.notEqual(target.localStorage.getItem(BrowserSaveStore.journalKey), null)
+}
+
 async function main() {
   const indexedDB = createIndexedDB()
   const target = createTarget(indexedDB)
@@ -337,6 +372,8 @@ async function main() {
   await testFallbackDeleteDoesNotResurrect()
   await testFallbackReplacementDoesNotRestoreRemovedKeys()
   await testFailedReplacementDoesNotReplay()
+  await testPageHideFlushesAndClosesDatabase()
+  await testFailedPageHideFlushStillClosesDatabase()
   console.log('Browser save store tests passed')
 }
 

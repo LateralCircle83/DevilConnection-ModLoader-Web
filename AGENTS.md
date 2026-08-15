@@ -60,6 +60,8 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 13. The host start button becomes enabled only after that handshake. Its trusted click synchronously calls the already-loaded same-origin iframe, unlocks audio, and starts the original `TYRANO.init()` without another overlay.
 14. Tyrano loads `Config.tjs`, the KAG runtime, and the initial scenario through VFS-backed requests.
 
+Only the latest iframe navigation may retain a pending `load` callback. Superseded prepared sessions remain queued until the latest replacement document loads, then release together. Reloading an active session must rotate its launch ID and token, and every delayed reload continuation must confirm that both the session and reload generation are still current before replacing `srcdoc`.
+
 ## Module ownership
 
 The source tree has five top-level responsibility domains. Add files to the narrowest existing domain; do not recreate one-folder-per-primitive layout.
@@ -98,6 +100,7 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - Keep the localStorage fallback and migration; it is active recovery behavior, not obsolete legacy support.
 - Save reads are synchronous from the in-memory cache after `storage.ready` resolves.
 - Failed IndexedDB flushes must preserve pending keys for retry and publish `data-dc-storage-error`.
+- A game document's save store captures its owning document and, on `pagehide`, flushes the write-ahead journal before explicitly closing its IndexedDB connection. Teardown must be idempotent and must still close the connection after a failed flush.
 - Before JSON serialization, restore known Blob URLs, including percent-encoded and double-encoded forms, to encoded logical ASAR paths.
 - Never persist Blob URLs or VFS layer IDs. A later session must resolve saved logical paths against its current layers.
 - Mod-origin Blob URLs use the same registry and restoration path as base-game URLs. Saves deliberately do not bind or persist a mod selection.

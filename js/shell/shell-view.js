@@ -86,6 +86,7 @@
     this.configModId = ''
     this.confirmReturnFocus = null
     this.confirmResolver = null
+    this.pendingFrameLoad = null
   }
 
   ShellView.prototype.bind = function (handlers) {
@@ -582,7 +583,21 @@
   }
 
   ShellView.prototype.navigate = function (html, onLoad) {
-    if (onLoad) this.frame.addEventListener('load', onLoad, { once: true })
+    if (this.pendingFrameLoad) {
+      this.frame.removeEventListener('load', this.pendingFrameLoad)
+      this.pendingFrameLoad = null
+    }
+    if (onLoad) {
+      var view = this
+      var handler = function (event) {
+        if (view.pendingFrameLoad !== handler) return
+        view.pendingFrameLoad = null
+        view.frame.removeEventListener('load', handler)
+        onLoad(event)
+      }
+      this.pendingFrameLoad = handler
+      this.frame.addEventListener('load', handler)
+    }
     this.frame.srcdoc = html
   }
 

@@ -3,9 +3,14 @@
 const assert = require('node:assert/strict')
 
 let messageHandler
+const windowTimers = []
 global.window = {
   addEventListener(type, handler) {
     if (type === 'message') messageHandler = handler
+  },
+  setTimeout(callback) {
+    windowTimers.push(callback)
+    return callback
   },
 }
 require('../js/kernel/namespace.js')
@@ -98,8 +103,82 @@ function testDisabledAndRemovedModsReleaseRuntimeCache() {
   assert.equal(modController.mods.length, 0)
 }
 
+function createReloadController() {
+  const reloadView = createView()
+  const navigations = []
+  reloadView.navigate = function (html, onLoad) { navigations.push({ html, onLoad }) }
+  reloadView.showManager = function () {}
+  const reloadController = new window.DCWeb.PlayerController(reloadView, {})
+  const session = {
+    baseGame: { file: { name: 'app.asar' }, packageJson: { version: '1.0.0' } },
+    html: '<title>game</title>',
+    launchId: 7,
+    launchToken: 'original-token',
+    modPlan: { metadata: [] },
+    resolver: { release() {} },
+    restartWhenReady: false,
+  }
+  reloadController.activeSession = session
+  return { navigations, reloadController, session }
+}
+
+function testRepeatedReloadOnlyUsesLatestNavigation() {
+  windowTimers.length = 0
+  const { navigations, reloadController, session } = createReloadController()
+
+  reloadController.reload()
+  const first = navigations[0]
+  const firstToken = session.launchToken
+  reloadController.reload()
+  const second = navigations[1]
+
+  assert.notEqual(session.launchToken, firstToken)
+  first.onLoad()
+  assert.equal(windowTimers.length, 0)
+  second.onLoad()
+  assert.equal(windowTimers.length, 1)
+  windowTimers.shift()()
+  assert.equal(navigations.length, 3)
+  assert.equal(navigations[2].html, session.html)
+}
+
+function testCloseInvalidatesPendingReload() {
+  windowTimers.length = 0
+  const { navigations, reloadController, session } = createReloadController()
+
+  reloadController.reload()
+  const pendingReload = navigations[0]
+  reloadController.close()
+  pendingReload.onLoad()
+  windowTimers.splice(0).forEach((callback) => callback())
+
+  assert.equal(reloadController.activeSession, null)
+  assert.equal(session.restartWhenReady, false)
+  assert.equal(navigations.length, 2)
+  assert.match(navigations[1].html, /Closed/)
+}
+
+function testSupersededSessionsReleaseTogether() {
+  const releaseView = createView()
+  const releaseController = new window.DCWeb.PlayerController(releaseView, {})
+  const releases = []
+  const first = { released: false, resolver: { release() { releases.push('first') } } }
+  const second = { released: false, resolver: { release() { releases.push('second') } } }
+
+  releaseController.queueSessionRelease(first)
+  releaseController.queueSessionRelease(second)
+  releaseController.releasePendingSessions()
+  releaseController.releasePendingSessions()
+
+  assert.deepEqual(releases, ['first', 'second'])
+  assert.equal(releaseController.pendingReleaseSessions.size, 0)
+}
+
 testPreparedStorageSuspension().then(function () {
   testDisabledAndRemovedModsReleaseRuntimeCache()
+  testRepeatedReloadOnlyUsesLatestNavigation()
+  testCloseInvalidatesPendingReload()
+  testSupersededSessionsReleaseTogether()
   console.log('Player controller tests passed')
 }).catch(function (error) {
   console.error(error)

@@ -10,10 +10,12 @@
   var JOURNAL_VERSION = 1
 
   function create(target) {
+    var ownerDocument = target.document
+
     function reportError(error) {
       var message = String(error && error.message || error || 'Unknown storage error')
       target.console.error('[DC storage]', error)
-      var root = target.document && target.document.documentElement
+      var root = ownerDocument && ownerDocument.documentElement
       if (root) root.setAttribute('data-dc-storage-error', message.slice(0, 500))
       try {
         target.dispatchEvent(new target.CustomEvent('dc-storage-error', { detail: { message: message } }))
@@ -80,7 +82,7 @@
     }
 
     function publishJournalState() {
-      var root = target.document && target.document.documentElement
+      var root = ownerDocument && ownerDocument.documentElement
       if (!root) return
       root.setAttribute('data-dc-storage-pending', String(journal.operations.length + (journal.reset ? 1 : 0)))
     }
@@ -197,6 +199,7 @@
     var storage = {
       cache: {},
       db: null,
+      closePromise: null,
       flushChain: Promise.resolve(),
       ready: null,
       flushTimer: null,
@@ -276,8 +279,12 @@
             resolve(false)
           }
           request.onsuccess = function () {
-            that.db = request.result
-            that.db.onversionchange = function () { that.db.close() }
+            var database = request.result
+            that.db = database
+            database.onversionchange = function () {
+              database.close()
+              if (that.db === database) that.db = null
+            }
             var transaction = that.db.transaction(STORE_NAME, 'readonly')
             var cursorRequest = transaction.objectStore(STORE_NAME).openCursor()
             cursorRequest.onsuccess = function (event) {
@@ -602,7 +609,7 @@
             transaction.oncomplete = function () {
               if (settled) return
               settled = true
-              var root = target.document && target.document.documentElement
+              var root = ownerDocument && ownerDocument.documentElement
               if (root) root.removeAttribute('data-dc-storage-error')
               if (snapshot.reset) clearLocalEntries()
               else snapshot.operations.forEach(function (operation) { safeLocalRemove(operation.key) })
@@ -629,13 +636,32 @@
         this.flushChain = this.flushChain.then(run, run)
         return this.flushChain
       },
+
+      close: function () {
+        if (this.closePromise) return this.closePromise
+        var that = this
+        function closeDatabase() {
+          var database = that.db
+          that.db = null
+          if (database) database.close()
+        }
+        this.closePromise = Promise.resolve(this.ready).then(function () {
+          return that.flush()
+        }).then(function () {
+          closeDatabase()
+        }, function (error) {
+          closeDatabase()
+          throw error
+        })
+        return this.closePromise
+      },
     }
 
     publishJournalState()
     storage.init()
-    target.addEventListener('pagehide', function () { storage.flush().catch(function () {}) })
-    target.document.addEventListener('visibilitychange', function () {
-      if (target.document.visibilityState === 'hidden') storage.flush().catch(function () {})
+    target.addEventListener('pagehide', function () { storage.close().catch(function () {}) }, { once: true })
+    ownerDocument.addEventListener('visibilitychange', function () {
+      if (ownerDocument.visibilityState === 'hidden') storage.flush().catch(function () {})
     })
     return storage
   }
