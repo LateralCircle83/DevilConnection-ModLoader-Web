@@ -94,6 +94,7 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 
 - Primary store: IndexedDB database `devil_connection_web_shell`, object store `saves`, schema version `1`.
 - Fallback keys use the `dc-shell:` localStorage prefix.
+- The reserved `dc-shell:__dc_pending_v1__` write-ahead journal is recovery metadata, not a save entry. Exclude it from reads and exports; replay it over stale IndexedDB data, and clear only the exact journal revision covered by a successful transaction.
 - Keep the localStorage fallback and migration; it is active recovery behavior, not obsolete legacy support.
 - Save reads are synchronous from the in-memory cache after `storage.ready` resolves.
 - Failed IndexedDB flushes must preserve pending keys for retry and publish `data-dc-storage-error`.

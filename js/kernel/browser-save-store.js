@@ -6,6 +6,8 @@
   var STORE_NAME = 'saves'
   var VERSION = 1
   var LOCAL_PREFIX = 'dc-shell:'
+  var JOURNAL_KEY = LOCAL_PREFIX + '__dc_pending_v1__'
+  var JOURNAL_VERSION = 1
 
   function create(target) {
     function reportError(error) {
@@ -16,6 +18,140 @@
       try {
         target.dispatchEvent(new target.CustomEvent('dc-storage-error', { detail: { message: message } }))
       } catch (dispatchError) {}
+    }
+
+    function emptyJournal(revision) {
+      return {
+        operations: [],
+        reset: false,
+        revision: Number.isSafeInteger(revision) ? revision : 0,
+        version: JOURNAL_VERSION,
+      }
+    }
+
+    function cloneJournal(value) {
+      var clone = emptyJournal(value && value.revision)
+      clone.reset = Boolean(value && value.reset)
+      clone.operations = (value && value.operations || []).map(function (operation) {
+        return operation.type === 'set'
+          ? { key: operation.key, type: 'set', value: operation.value }
+          : { key: operation.key, type: 'remove' }
+      })
+      return clone
+    }
+
+    function readJournal() {
+      var raw
+      try { raw = target.localStorage.getItem(JOURNAL_KEY) } catch (error) { return emptyJournal() }
+      if (!raw) return emptyJournal()
+      try {
+        var parsed = JSON.parse(raw)
+        if (!parsed || parsed.version !== JOURNAL_VERSION || !Array.isArray(parsed.operations)) {
+          throw new Error('Unsupported save journal format')
+        }
+        var journal = emptyJournal(Number.isSafeInteger(parsed.revision) && parsed.revision >= 0 ? parsed.revision : 0)
+        journal.reset = Boolean(parsed.reset)
+        parsed.operations.forEach(function (operation) {
+          if (!operation || typeof operation.key !== 'string' || (operation.type !== 'set' && operation.type !== 'remove')) return
+          var existing = journal.operations.findIndex(function (item) { return item.key === operation.key })
+          var normalized = operation.type === 'set'
+            ? { key: operation.key, type: 'set', value: String(operation.value) }
+            : { key: operation.key, type: 'remove' }
+          if (existing === -1) journal.operations.push(normalized)
+          else journal.operations[existing] = normalized
+        })
+        return journal
+      } catch (error) {
+        reportError(new Error('无法读取本地存档恢复日志：' + error.message))
+        return emptyJournal()
+      }
+    }
+
+    var journal = readJournal()
+
+    function journalHasWork(value) {
+      return Boolean(value.reset || value.operations.length)
+    }
+
+    function refreshJournal() {
+      var persisted = readJournal()
+      if (persisted.revision >= journal.revision) journal = persisted
+      return journal
+    }
+
+    function publishJournalState() {
+      var root = target.document && target.document.documentElement
+      if (!root) return
+      root.setAttribute('data-dc-storage-pending', String(journal.operations.length + (journal.reset ? 1 : 0)))
+    }
+
+    function persistJournal() {
+      publishJournalState()
+      try {
+        target.localStorage.setItem(JOURNAL_KEY, JSON.stringify(journal))
+        return true
+      } catch (error) {
+        reportError(new Error('无法写入本地存档恢复日志：' + String(error && error.message || error)))
+        return false
+      }
+    }
+
+    function replaceJournal(value) {
+      journal = cloneJournal(value)
+      persistJournal()
+    }
+
+    function recordOperations(entries, removedKeys, reset) {
+      refreshJournal()
+      var next = cloneJournal(journal)
+      next.revision++
+      if (reset) {
+        next.reset = true
+        next.operations = []
+      }
+      ;(removedKeys || []).forEach(function (key) {
+        var normalizedKey = String(key)
+        var existing = next.operations.findIndex(function (item) { return item.key === normalizedKey })
+        var operation = { key: normalizedKey, type: 'remove' }
+        if (existing === -1) next.operations.push(operation)
+        else next.operations[existing] = operation
+      })
+      Object.keys(entries || {}).forEach(function (key) {
+        var existing = next.operations.findIndex(function (item) { return item.key === key })
+        var operation = { key: key, type: 'set', value: String(entries[key]) }
+        if (existing === -1) next.operations.push(operation)
+        else next.operations[existing] = operation
+      })
+      replaceJournal(next)
+      return cloneJournal(next)
+    }
+
+    function mergeRecovery(entries, fallback, value) {
+      var result = value.reset ? {} : cloneEntries(entries)
+      Object.keys(fallback || {}).forEach(function (key) { result[key] = String(fallback[key]) })
+      value.operations.forEach(function (operation) {
+        if (operation.type === 'set') result[operation.key] = operation.value
+        else delete result[operation.key]
+      })
+      return result
+    }
+
+    function clearCommittedJournal(snapshot) {
+      refreshJournal()
+      if (journal.revision !== snapshot.revision) return false
+      journal = emptyJournal(snapshot.revision)
+      persistJournal()
+      return true
+    }
+
+    function discardFallbackSets(snapshot) {
+      refreshJournal()
+      if (journal.revision !== snapshot.revision) return
+      if (!journal.operations.some(function (operation) { return operation.type === 'set' })) return
+      var next = cloneJournal(journal)
+      next.operations = next.operations.filter(function (operation) { return operation.type === 'remove' })
+      next.revision++
+      replaceJournal(next)
     }
 
     function safeLocalGet(key) {
@@ -39,7 +175,7 @@
       try {
         for (var index = 0; index < target.localStorage.length; index++) {
           var storageKey = target.localStorage.key(index)
-          if (!storageKey || storageKey.indexOf(LOCAL_PREFIX) !== 0) continue
+          if (!storageKey || storageKey === JOURNAL_KEY || storageKey.indexOf(LOCAL_PREFIX) !== 0) continue
           var key = storageKey.slice(LOCAL_PREFIX.length)
           var value = target.localStorage.getItem(storageKey)
           if (value !== null) entries[key] = value
@@ -60,39 +196,36 @@
 
     var storage = {
       cache: {},
-      pending: {},
       db: null,
+      flushChain: Promise.resolve(),
       ready: null,
       flushTimer: null,
       useIndexedDB: Boolean(target.indexedDB),
 
       loadLocalFallback: function () {
         var entries = readLocalEntries()
-        var that = this
-        Object.keys(entries).forEach(function (key) {
-          if (!Object.prototype.hasOwnProperty.call(that.cache, key)) that.cache[key] = entries[key]
-        })
+        this.cache = mergeRecovery(this.cache, entries, journal)
       },
 
       migrateLocalFallback: function () {
+        refreshJournal()
         var entries = readLocalEntries()
+        var snapshot = cloneJournal(journal)
         var keys = Object.keys(entries)
-        if (!keys.length || !this.db) return Promise.resolve()
+        if ((!keys.length && !journalHasWork(snapshot)) || !this.db) return Promise.resolve()
 
         var that = this
-        var missingKeys = keys.filter(function (key) {
-          return !Object.prototype.hasOwnProperty.call(that.cache, key)
-        })
-        missingKeys.forEach(function (key) { that.cache[key] = entries[key] })
-        if (!missingKeys.length) {
-          clearLocalEntries(entries)
-          return Promise.resolve()
-        }
+        this.cache = mergeRecovery(this.cache, entries, snapshot)
 
         return new Promise(function (resolve, reject) {
           var transaction = that.db.transaction(STORE_NAME, 'readwrite')
           var store = transaction.objectStore(STORE_NAME)
-          missingKeys.forEach(function (key) { store.put(entries[key], key) })
+          if (snapshot.reset) store.clear()
+          keys.forEach(function (key) { store.put(entries[key], key) })
+          snapshot.operations.forEach(function (operation) {
+            if (operation.type === 'set') store.put(operation.value, operation.key)
+            else store.delete(operation.key)
+          })
           var settled = false
           function fail() {
             if (settled) return
@@ -103,6 +236,7 @@
             if (settled) return
             settled = true
             clearLocalEntries(entries)
+            clearCommittedJournal(snapshot)
             resolve()
           }
           transaction.onerror = fail
@@ -172,24 +306,47 @@
 
       getItem: function (key) {
         if (Object.prototype.hasOwnProperty.call(this.cache, key)) return this.cache[key]
+        for (var index = journal.operations.length - 1; index >= 0; index--) {
+          if (journal.operations[index].key !== String(key)) continue
+          return journal.operations[index].type === 'set' ? journal.operations[index].value : null
+        }
+        if (journal.reset) return null
         var fallback = safeLocalGet(key)
         return fallback === null ? null : fallback
       },
 
       setItem: function (key, value) {
-        this.cache[key] = String(value)
+        var normalizedKey = String(key)
+        var normalizedValue = String(value)
+        this.cache[normalizedKey] = normalizedValue
         if (this.useIndexedDB) {
-          this.pending[key] = true
+          var entries = {}
+          entries[normalizedKey] = normalizedValue
+          recordOperations(entries, [], false)
           this.scheduleFlush()
-        } else safeLocalSet(key, String(value))
+        } else {
+          try { localSet(normalizedKey, normalizedValue) } catch (error) { reportError(error) }
+          refreshJournal()
+          var existing = journal.operations.findIndex(function (operation) { return operation.key === normalizedKey })
+          if (existing !== -1) {
+            var next = cloneJournal(journal)
+            next.operations.splice(existing, 1)
+            next.revision++
+            replaceJournal(next)
+          }
+        }
       },
 
       removeItem: function (key) {
-        delete this.cache[key]
+        var normalizedKey = String(key)
+        delete this.cache[normalizedKey]
         if (this.useIndexedDB) {
-          this.pending[key] = true
+          recordOperations({}, [normalizedKey], false)
           this.scheduleFlush()
-        } else safeLocalRemove(key)
+        } else {
+          try { target.localStorage.removeItem(LOCAL_PREFIX + normalizedKey) } catch (error) { reportError(error) }
+          recordOperations({}, [normalizedKey], false)
+        }
       },
 
       clear: function () {
@@ -203,7 +360,7 @@
         var that = this
         return this.flush().then(function () { return that.ready }).then(function () {
           if (!that.useIndexedDB || !that.db) {
-            that.cache = readLocalEntries()
+            that.cache = mergeRecovery({}, readLocalEntries(), journal)
             return cloneEntries(that.cache)
           }
           return new Promise(function (resolve, reject) {
@@ -218,11 +375,8 @@
             }
             transaction.oncomplete = function () {
               var fallback = readLocalEntries()
-              Object.keys(fallback).forEach(function (key) {
-                if (!Object.prototype.hasOwnProperty.call(entries, key)) entries[key] = fallback[key]
-              })
-              that.cache = cloneEntries(entries)
-              resolve(cloneEntries(entries))
+              that.cache = mergeRecovery(entries, fallback, journal)
+              resolve(cloneEntries(that.cache))
             }
             transaction.onerror = function () {
               reject(transaction.error || new Error('IndexedDB saves could not be read'))
@@ -237,21 +391,23 @@
 
       replaceEntries: function (entries) {
         var nextEntries = cloneEntries(entries)
-        var previousCache = cloneEntries(this.cache)
-        var previousLocal = readLocalEntries()
         var that = this
         if (this.flushTimer) {
           target.clearTimeout(this.flushTimer)
           this.flushTimer = null
         }
-        this.pending = {}
 
-        return this.ready.then(function () {
+        return this.flush().then(function () { return that.ready }).then(function () {
+          var previousCache = cloneEntries(that.cache)
+          var previousLocal = readLocalEntries()
+          var previousJournal = cloneJournal(journal)
+          var snapshot = recordOperations(nextEntries, [], true)
+          that.cache = cloneEntries(nextEntries)
+
           if (!that.useIndexedDB || !that.db) {
             try {
               clearLocalEntries()
               Object.keys(nextEntries).forEach(function (key) { localSet(key, nextEntries[key]) })
-              that.cache = cloneEntries(nextEntries)
               return
             } catch (error) {
               clearLocalEntries()
@@ -259,6 +415,7 @@
                 try { localSet(key, previousLocal[key]) } catch (restoreError) {}
               })
               that.cache = previousCache
+              replaceJournal(previousJournal)
               throw error
             }
           }
@@ -273,13 +430,14 @@
               if (settled) return
               settled = true
               that.cache = previousCache
+              replaceJournal(previousJournal)
               reject(transaction.error || new Error('IndexedDB saves could not be replaced'))
             }
             transaction.oncomplete = function () {
               if (settled) return
               settled = true
               clearLocalEntries()
-              that.cache = cloneEntries(nextEntries)
+              clearCommittedJournal(snapshot)
               resolve()
             }
             transaction.onerror = fail
@@ -294,15 +452,19 @@
       updateEntries: function (entries) {
         var updates = cloneEntries(entries)
         var keys = Object.keys(updates)
-        var previousCache = cloneEntries(this.cache)
-        var previousLocal = readLocalEntries()
         var that = this
 
         return this.flush().then(function () { return that.ready }).then(function () {
+          var previousCache = cloneEntries(that.cache)
+          var previousLocal = readLocalEntries()
+          var previousJournal = cloneJournal(journal)
+          var snapshot = recordOperations(updates, [], false)
+          keys.forEach(function (key) { that.cache[key] = updates[key] })
+
           if (!that.useIndexedDB || !that.db) {
             try {
               keys.forEach(function (key) { localSet(key, updates[key]) })
-              keys.forEach(function (key) { that.cache[key] = updates[key] })
+              discardFallbackSets(snapshot)
               return
             } catch (error) {
               keys.forEach(function (key) {
@@ -311,6 +473,7 @@
                 } else safeLocalRemove(key)
               })
               that.cache = previousCache
+              replaceJournal(previousJournal)
               throw error
             }
           }
@@ -324,15 +487,14 @@
               if (settled) return
               settled = true
               that.cache = previousCache
+              replaceJournal(previousJournal)
               reject(transaction.error || new Error('IndexedDB saves could not be updated'))
             }
             transaction.oncomplete = function () {
               if (settled) return
               settled = true
-              keys.forEach(function (key) {
-                safeLocalRemove(key)
-                that.cache[key] = updates[key]
-              })
+              keys.forEach(safeLocalRemove)
+              clearCommittedJournal(snapshot)
               resolve()
             }
             transaction.onerror = fail
@@ -346,17 +508,18 @@
 
       removeEntries: function (keys) {
         var normalizedKeys = Array.from(new Set((keys || []).map(String)))
-        var previousCache = cloneEntries(this.cache)
-        var previousLocal = readLocalEntries()
         var that = this
 
         return this.flush().then(function () { return that.ready }).then(function () {
+          var previousCache = cloneEntries(that.cache)
+          var previousLocal = readLocalEntries()
+          var previousJournal = cloneJournal(journal)
+          var snapshot = recordOperations({}, normalizedKeys, false)
+          normalizedKeys.forEach(function (key) { delete that.cache[key] })
+
           if (!that.useIndexedDB || !that.db) {
             try {
-              normalizedKeys.forEach(function (key) {
-                target.localStorage.removeItem(LOCAL_PREFIX + key)
-                delete that.cache[key]
-              })
+              normalizedKeys.forEach(function (key) { target.localStorage.removeItem(LOCAL_PREFIX + key) })
               return
             } catch (error) {
               normalizedKeys.forEach(function (key) {
@@ -365,6 +528,7 @@
                 }
               })
               that.cache = previousCache
+              replaceJournal(previousJournal)
               throw error
             }
           }
@@ -378,15 +542,14 @@
               if (settled) return
               settled = true
               that.cache = previousCache
+              replaceJournal(previousJournal)
               reject(transaction.error || new Error('IndexedDB saves could not be removed'))
             }
             transaction.oncomplete = function () {
               if (settled) return
               settled = true
-              normalizedKeys.forEach(function (key) {
-                safeLocalRemove(key)
-                delete that.cache[key]
-              })
+              normalizedKeys.forEach(safeLocalRemove)
+              clearCommittedJournal(snapshot)
               resolve()
             }
             transaction.onerror = fail
@@ -407,25 +570,28 @@
         }, 60)
       },
 
-      flush: function () {
+      flushPending: function () {
         var that = this
-        var keys = Object.keys(this.pending)
-        this.pending = {}
-        if (!keys.length) return Promise.resolve()
+        refreshJournal()
+        var snapshot = cloneJournal(journal)
+        if (!journalHasWork(snapshot)) return Promise.resolve()
         return this.ready.then(function () {
           if (!that.useIndexedDB || !that.db) {
-            keys.forEach(function (key) {
-              if (Object.prototype.hasOwnProperty.call(that.cache, key)) safeLocalSet(key, that.cache[key])
-              else safeLocalRemove(key)
+            snapshot.operations.forEach(function (operation) {
+              if (operation.type === 'set') localSet(operation.key, operation.value)
+              else target.localStorage.removeItem(LOCAL_PREFIX + operation.key)
             })
+            that.cache = mergeRecovery({}, readLocalEntries(), snapshot)
+            discardFallbackSets(snapshot)
             return
           }
           return new Promise(function (resolve, reject) {
             var transaction = that.db.transaction(STORE_NAME, 'readwrite')
             var store = transaction.objectStore(STORE_NAME)
-            keys.forEach(function (key) {
-              if (Object.prototype.hasOwnProperty.call(that.cache, key)) store.put(that.cache[key], key)
-              else store.delete(key)
+            if (snapshot.reset) store.clear()
+            snapshot.operations.forEach(function (operation) {
+              if (operation.type === 'set') store.put(operation.value, operation.key)
+              else store.delete(operation.key)
             })
             var settled = false
             function fail() {
@@ -438,19 +604,34 @@
               settled = true
               var root = target.document && target.document.documentElement
               if (root) root.removeAttribute('data-dc-storage-error')
+              if (snapshot.reset) clearLocalEntries()
+              else snapshot.operations.forEach(function (operation) { safeLocalRemove(operation.key) })
+              clearCommittedJournal(snapshot)
+              if (journalHasWork(journal)) that.scheduleFlush()
               resolve()
             }
             transaction.onerror = fail
             transaction.onabort = fail
           })
         }).catch(function (error) {
-          keys.forEach(function (key) { that.pending[key] = true })
           reportError(error)
           throw error
         })
       },
+
+      flush: function () {
+        if (this.flushTimer) {
+          target.clearTimeout(this.flushTimer)
+          this.flushTimer = null
+        }
+        var that = this
+        function run() { return that.flushPending() }
+        this.flushChain = this.flushChain.then(run, run)
+        return this.flushChain
+      },
     }
 
+    publishJournalState()
     storage.init()
     target.addEventListener('pagehide', function () { storage.flush().catch(function () {}) })
     target.document.addEventListener('visibilitychange', function () {
@@ -462,6 +643,7 @@
   DCWeb.BrowserSaveStore = {
     create: create,
     databaseName: DB_NAME,
+    journalKey: JOURNAL_KEY,
     storeName: STORE_NAME,
   }
 })(window)
