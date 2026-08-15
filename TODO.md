@@ -87,8 +87,9 @@
 - [x] **有界 Tyrano 预加载调度器**：在壳核心的 Tyrano 适配边界包装 `kag.preload()` / `preloadAll()`，限制图片、音频与视频的同时加载和解码数量，合并语义相同的同 URL 在途任务；支持失败放行、30 秒超时、页面退出取消和 DOM 遥测，不做永久资源缓存，也不全局拦截普通 fetch/XHR 或媒体 Range 请求。
 - [x] **资源呈现就绪屏障**：作为 Host kernel 浏览器契约，在 Tyrano `image` 标签开始原始插入和淡入前完成预加载及 `decode()`，不再全局隐藏最终图片；既有视频预加载回调只等待和记录，不覆盖可见性、背景、场景推进或 `movie_with_bg` 时序。失败、超时和退出均失败放行。
 - [x] **Android Chromium fragmented MP4 恢复**：真机以独立内存 Blob 复现相同 AAC demux 错误，排除 ASAR range/高位 slice/字节缺失。Host kernel 只在受管 MP4/M4V 返回错误码 4 后，对不超过 16 MiB 且严格识别 codec 的 fragmented ISO BMFF 建立一次 MSE 表示；不做 UA sniff、转码、游戏资源转换或永久缓存。
-- [x] **迷雾视频 Android 兼容**：`kiri2.mp4` 是普通非分片 MP4，无法进入 fragmented MSE 回退；其 AAC 轨经解码确认全静音。Game Profile 在严格大小和 SHA-256 匹配后，仅将该 `soun` 轨的等长容器类型改为 `free`，不移动 `mdat`、视频 sample 或 chunk offset，不改写磁盘和 ASAR。
-- [ ] **标题循环视频队列**：串行处理 `SourceBuffer.appendBuffer()`，等待 `updateend` 后再追加；处理 `InvalidStateError`、加载失败、重复切换和退出，并在结束时解除监听、关闭 `MediaSource`、撤销 URL。归入游戏兼容档案，目标行为参考旧项目 `data/others/plugin/title_loop/main.js`。
+- [x] **静音视频 Android 兼容**：`kiri2.mp4` 和 `effect.mp4` 都是普通非分片 MP4，无法进入 fragmented MSE 回退；其 AAC 轨经解码确认全静音。Game Profile 为两份资源声明独立的严格大小和 SHA-256 签名，仅将各自 `soun` 轨的等长容器类型改为 `free`，不移动 `mdat`、视频 sample 或 chunk offset，不改写磁盘和 ASAR。
+- [x] **未知模组 MP4 仅画面兜底**：Host kernel 只在受管 MP4/M4V 真实返回错误码 4 且保声 MSE 不可用或失败后，范围解析非分片 H.264/AAC 结构并生成等长无音轨复合 Blob；不整文件复制、不修改 VFS/ASAR，每个元素最多重试一次，明确警告并随来源生命周期释放。静音视频 Profile 对未知模组同名覆盖记录委托，基础游戏签名未知仍中止。
+- [ ] **标题循环视频队列**：串行处理 `SourceBuffer.appendBuffer()`，等待 `updateend` 后再追加；处理 `InvalidStateError`、加载失败、重复切换和退出，并在结束时解除监听、关闭 `MediaSource`、撤销 URL。17.18 MiB 的 `title_main.mp4` 是唯一超过 Host MSE 回退上限的视频，但只有 H.264 轨且由该插件自己的 MSE 路径读取；归入游戏兼容档案，目标行为参考旧项目 `data/others/plugin/title_loop/main.js`。
 - [ ] **存档截图可靠收敛**：保证 `snapSave` 在截图、图片加载或 `toDataURL()` 失败时也只结束一次，并允许无缩略图存档，避免剧情永久卡住。优先通过 Tyrano 适配器包装稳定接口；只能依赖源码结构时再使用版本补丁。
 - [ ] **截图克隆隔离**：使用 html2canvas 的 `onclone` 只清理克隆文档中的文件输入或不可序列化状态，不修改正在运行的游戏 DOM。与存档截图可靠收敛一并实现。
 - [ ] **手动存档等待持久化**：成功提示应等待 IndexedDB 写入完成；失败时保留可重试数据并显示存储错误。
@@ -97,6 +98,8 @@
 
 ### 验证后引入
 
+- [ ] **APNG 解码峰值与释放**：最终资源有 12 个超过 16 MiB 的 APNG，现有插件会一次建立全部帧图像，完整 RGBA 帧上界约 124–347 MiB。先用真实 Android Chromium 测量 Worker、Data URL、Image 和 Canvas 的峰值及 `free_apng` 后回收；需要时将惰性解码和缓存释放做成可选 `dc_safe_apng` 模组，不扩大必要 Profile 转换。
+- [ ] **长音频解码生命周期**：559 个音频均可解析，但最长 BGM 的双声道 Float32 PCM 理论体积约 108.6 MiB。先确认 Howler 在曲目切换、停止和页面退出后的 AudioBuffer 回收，再决定是否需要可选的流式播放或释放策略；不引入全局永久 Howl 缓存。
 - [ ] **移动端输入提交复位**：执行 Tyrano `[commit]` 后立即并在下一帧再次复位 `#tyrano_base` 滚动位置；先在真实移动浏览器复现输入法导致的画面偏移。
 - [ ] **Backlog 初始化**：移除依赖固定 150 ms 的异步探测，改为通过 VFS 明确判断所需文件是否存在；确认不会改变原版初始化顺序。
 - [ ] **字体显示策略**：评估对最终 VFS CSS 添加 `font-display: swap` 的收益与闪烁影响。若只是体验偏好，做成可选模组或设置，不进入必要兼容层。

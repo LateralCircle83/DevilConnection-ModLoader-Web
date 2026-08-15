@@ -129,6 +129,9 @@ start_server.bat 8080
 
 ```console
 node tests/url-edge-cases.test.js
+node tests/media-source-fallback.test.js
+node tests/mp4-visual-fallback.test.js
+node tests/resource-readiness.test.js
 node tests/mod-loader.test.js
 node tests/mod-config.test.js
 node tests/mod-config-controller.test.js

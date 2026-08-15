@@ -2,8 +2,7 @@
   'use strict'
 
   var DCWeb = global.DCWeb
-  var TARGET_SIZE = 346767
-  var TARGET_SHA256 = 'ffde567fc3088cc63a72461fe7ba82a4091c22f1bd2f29b4aa5332d6ef85b11f'
+  var MAX_BYTES = 1024 * 1024
 
   function typeAt(bytes, offset) {
     return String.fromCharCode(bytes[offset], bytes[offset + 1], bytes[offset + 2], bytes[offset + 3])
@@ -79,19 +78,42 @@
     return output.buffer
   }
 
-  DCWeb.DevilConnectionKiriVideoPatch = {
-    description: '移除迷雾转场视频中全静音且 Android Chromium 无法解封装的 AAC 轨。',
-    failure: 'abort-session',
-    format: 'binary',
-    id: 'devil-connection-kiri-video-android-compat',
-    maxBytes: 1024 * 1024,
-    name: '迷雾视频 Android 兼容',
-    required: true,
-    signatures: [
-      { name: '迷雾视频大小', size: TARGET_SIZE },
-      { name: '迷雾视频版本', sha256: TARGET_SHA256 },
-    ],
-    target: 'data/video/kiri2.mp4',
-    transform: transform,
+  function createPatch(options) {
+    return {
+      description: options.description,
+      failure: 'abort-session',
+      format: 'binary',
+      id: options.id,
+      maxBytes: MAX_BYTES,
+      name: options.name,
+      required: true,
+      signatures: [
+        { name: options.signatureName + '大小', size: options.size },
+        { name: options.signatureName + '版本', sha256: options.sha256 },
+      ],
+      target: options.target,
+      transform: transform,
+      unsupportedMod: 'delegate-to-runtime',
+    }
   }
+
+  DCWeb.DevilConnectionKiriVideoPatch = createPatch({
+    description: '移除迷雾转场视频中全静音且 Android Chromium 无法解封装的 AAC 轨。',
+    id: 'devil-connection-kiri-video-android-compat',
+    name: '迷雾视频 Android 兼容',
+    signatureName: '迷雾视频',
+    size: 346767,
+    sha256: 'ffde567fc3088cc63a72461fe7ba82a4091c22f1bd2f29b4aa5332d6ef85b11f',
+    target: 'data/video/kiri2.mp4',
+  })
+
+  DCWeb.DevilConnectionEffectVideoPatch = createPatch({
+    description: '移除 effect.mp4 中全静音且 Android Chromium 无法解封装的 AAC 轨。',
+    id: 'devil-connection-effect-video-android-compat',
+    name: 'Effect 视频 Android 兼容',
+    signatureName: 'Effect 视频',
+    size: 963462,
+    sha256: '0151e07fec302ed5de5998dda6202b5120d7c0c2cc612e90c98640f04055c9bd',
+    target: 'data/video/effect.mp4',
+  })
 })(window)

@@ -137,6 +137,37 @@
     })
   }
 
+  AssetResolver.prototype.createVisualOnlyMediaObjectUrl = function (input, basePath) {
+    var resolver = this
+    var resolved = this.resolve(input, basePath)
+    if (!resolved || this.released || !DCWeb.Mp4VisualFallback) return Promise.resolve(null)
+    var blob = this.getBlob(input, basePath)
+    if (!blob) return Promise.resolve(null)
+
+    return DCWeb.Mp4VisualFallback.create(blob).then(function (representation) {
+      if (!representation || resolver.released) return null
+      var key = resolver.keyFor(resolved) + ':visual-only:' + resolver.nextTransientId++
+      var url = resolver.registry.create(key, resolved.path, representation.blob)
+      var released = false
+      var handle = {
+        audioCodec: representation.audioCodec,
+        size: representation.blob.size,
+        sourceKind: resolved.kind || '',
+        sourceLayerId: resolved.layerId || '',
+        url: url + Path.fragmentOf(input),
+        videoCodec: representation.videoCodec,
+        release: function () {
+          if (released) return false
+          released = true
+          resolver.transientMedia.delete(handle)
+          return resolver.registry.revoke(key)
+        },
+      }
+      resolver.transientMedia.add(handle)
+      return handle
+    })
+  }
+
   AssetResolver.prototype.restoreObjectUrls = function (value) {
     return this.registry.restore(value)
   }

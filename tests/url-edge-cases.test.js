@@ -10,6 +10,7 @@ require('../js/kernel/layered-vfs.js')
 require('../js/kernel/object-url-registry.js')
 require('../js/kernel/style-processor.js')
 require('../js/kernel/media-source-fallback.js')
+require('../js/kernel/mp4-visual-fallback.js')
 require('../js/kernel/asset-resolver.js')
 require('../js/kernel/resource-rewriter.js')
 require('../js/kernel/resource-readiness.js')
@@ -640,11 +641,16 @@ async function testManagedVideoRetriesOnceThroughMediaSource() {
   const attributes = new WeakMap()
   const rootAttributes = new Map()
   const logicalUrl = 'data/video/title_intro.mp4'
+  const visualLogicalUrl = 'data/video/mod-effect.mp4'
   const blobUrl = 'blob:http://127.0.0.1:4173/title-intro'
+  const visualBlobUrl = 'blob:http://127.0.0.1:4173/mod-effect'
   const mseUrl = 'blob:http://127.0.0.1:4173/title-intro-mse'
+  const visualUrl = 'blob:http://127.0.0.1:4173/mod-effect-visual'
   let createCalls = 0
   let loadCalls = 0
   let releaseCalls = 0
+  let visualCalls = 0
+  const warnings = []
 
   function Element(tag) {
     this.tagName = tag || 'DIV'
@@ -692,6 +698,7 @@ async function testManagedVideoRetriesOnceThroughMediaSource() {
     Element,
     HTMLMediaElement: MediaElement,
     Promise,
+    console: { warn(message) { warnings.push(String(message)) } },
     document: {
       documentElement: {
         getAttribute(name) { return rootAttributes.get(name) || null },
@@ -704,8 +711,9 @@ async function testManagedVideoRetriesOnceThroughMediaSource() {
   const resolver = {
     createMediaSourceObjectUrl(source, maxBytes) {
       createCalls++
-      assert.equal(source, logicalUrl)
       assert.equal(maxBytes, window.DCWeb.MediaSourceFallback.MAX_BYTES)
+      if (source === visualLogicalUrl) return Promise.resolve(null)
+      assert.equal(source, logicalUrl)
       return Promise.resolve({
         mimeType: 'video/mp4; codecs="avc1.640028, mp4a.40.2"',
         ready: Promise.resolve({ ok: true, state: 'buffered' }),
@@ -713,10 +721,27 @@ async function testManagedVideoRetriesOnceThroughMediaSource() {
         url: mseUrl,
       })
     },
-    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
-    has(value) { return value === logicalUrl },
+    createVisualOnlyMediaObjectUrl(source) {
+      visualCalls++
+      assert.equal(source, visualLogicalUrl)
+      return Promise.resolve({
+        audioCodec: 'mp4a.40.2',
+        sourceKind: 'mod',
+        sourceLayerId: 'mod:unknown-video',
+        videoCodec: 'avc1.640028',
+        release() { releaseCalls++; return true },
+        url: visualUrl,
+      })
+    },
+    getObjectUrl(value) {
+      if (value === logicalUrl) return blobUrl
+      if (value === visualLogicalUrl) return visualBlobUrl
+      return value
+    },
+    has(value) { return value === logicalUrl || value === visualLogicalUrl },
     restoreObjectUrls(value) {
       if (value === blobUrl || value === mseUrl) return logicalUrl
+      if (value === visualBlobUrl || value === visualUrl) return visualLogicalUrl
       return value
     },
   }
@@ -743,9 +768,36 @@ async function testManagedVideoRetriesOnceThroughMediaSource() {
 
   video.error = null
   video.emit('loadedmetadata')
-  assert.equal(rootAttributes.get('data-dc-media-fallback-state'), 'recovered')
+  assert.equal(rootAttributes.get('data-dc-media-fallback-state'), 'mse-recovered')
+  assert.equal(visualCalls, 0)
+  assert.deepEqual(warnings, [])
   video.src = 'https://example.com/external.mp4'
   assert.equal(releaseCalls, 1)
+
+  const visualVideo = new MediaElement('VIDEO')
+  visualVideo.src = visualLogicalUrl
+  assert.equal(attributes.get(visualVideo).get('src'), visualBlobUrl)
+  visualVideo.error = { code: 4, message: 'PipelineStatus::DEMUXER_ERROR_DETECTED_AAC' }
+  visualVideo.emit('error')
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(createCalls, 2)
+  assert.equal(visualCalls, 1)
+  assert.equal(attributes.get(visualVideo).get('src'), visualUrl)
+  assert.equal(loadCalls, 2)
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /Visual-only recovery dropped AAC audio/)
+  assert.match(warnings[0], /data\/video\/mod-effect\.mp4/)
+  assert.match(warnings[0], /mod:unknown-video/)
+  assert.match(warnings[0], /mp4a\.40\.2/)
+
+  visualVideo.error = null
+  visualVideo.emit('loadedmetadata')
+  assert.equal(rootAttributes.get('data-dc-media-fallback-state'), 'visual-only-recovered')
+  visualVideo.src = 'https://example.com/external.mp4'
+  assert.equal(releaseCalls, 2)
 }
 
 async function main() {

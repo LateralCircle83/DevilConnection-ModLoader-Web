@@ -12,7 +12,10 @@ const allowedRootFiles = new Set([
   'README.md',
   'favicon.ico',
   'index.html',
-  'styles.css'
+  'styles.css',
+  'tools/media-compatibility.css',
+  'tools/media-compatibility.html',
+  'tools/media-compatibility.js'
 ])
 const mimeTypes = {
   '.css': 'text/css; charset=utf-8',

@@ -7,7 +7,7 @@ require('../js/kernel/namespace.js')
 require('../js/kernel/resource-path.js')
 require('../js/profiles/profile-runner.js')
 require('../js/profiles/devil-connection-apng.js')
-require('../js/profiles/devil-connection-kiri-video.js')
+require('../js/profiles/devil-connection-silent-videos.js')
 require('../js/profiles/devil-connection.js')
 
 const profile = window.DCWeb.DevilConnectionProfile
@@ -37,6 +37,9 @@ assert.equal(profile.patches[0].target, 'tyrano/libs/apng.js')
 assert.equal(profile.patches[1].id, 'devil-connection-kiri-video-android-compat')
 assert.equal(profile.patches[1].target, 'data/video/kiri2.mp4')
 assert.equal(profile.patches[1].format, 'binary')
+assert.equal(profile.patches[2].id, 'devil-connection-effect-video-android-compat')
+assert.equal(profile.patches[2].target, 'data/video/effect.mp4')
+assert.equal(profile.patches[2].format, 'binary')
 
 async function testApngPatch() {
   let prepared = null

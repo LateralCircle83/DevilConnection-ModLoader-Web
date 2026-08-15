@@ -5,6 +5,7 @@
   var STATUS_LABELS = {
     applied: '已应用',
     checking: '检查中',
+    delegated: '交由运行时',
     failed: '应用失败',
     idle: '等待检查',
     'not-applicable': '无需应用',

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>媒体兼容诊断 - DevilConnection Modloader web</title>
+    <link rel="icon" href="../favicon.ico" sizes="any" />
+    <link rel="stylesheet" href="./media-compatibility.css?v=20260815a" />
+    <script defer src="../js/kernel/namespace.js"></script>
+    <script defer src="../js/kernel/resource-path.js"></script>
+    <script defer src="../js/kernel/asar-archive.js"></script>
+    <script defer src="../js/kernel/layered-vfs.js"></script>
+    <script defer src="../js/kernel/object-url-registry.js?v=20260814g"></script>
+    <script defer src="../js/kernel/style-processor.js?v=20260814a"></script>
+    <script defer src="../js/kernel/media-source-fallback.js?v=20260814g"></script>
+    <script defer src="../js/kernel/mp4-visual-fallback.js?v=20260815a"></script>
+    <script defer src="../js/kernel/asset-resolver.js?v=20260815b"></script>
+    <script defer src="../js/profiles/profile-runner.js?v=20260815b"></script>
+    <script defer src="../js/profiles/devil-connection-silent-videos.js?v=20260815c"></script>
+    <script defer src="./media-compatibility.js?v=20260815c"></script>
+  </head>
+  <body>
+    <header class="tool-header">
+      <div>
+        <p class="tool-kicker">DevilConnection / Browser Diagnostics</p>
+        <h1>媒体兼容诊断</h1>
+      </div>
+      <p id="environment" class="environment"></p>
+    </header>
+
+    <main>
+      <section class="source-band" aria-labelledby="source-title">
+        <h2 id="source-title">资源来源</h2>
+        <div class="source-grid">
+          <label class="file-field" for="core-file">
+            <span>游戏本体</span>
+            <input id="core-file" type="file" accept=".asar,application/octet-stream" />
+          </label>
+          <label class="file-field" for="mod-files">
+            <span>模组覆盖（可选，按选择顺序）</span>
+            <input id="mod-files" type="file" accept=".asar,application/octet-stream" multiple />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="start-test" class="button button-primary" type="button" disabled>开始测试</button>
+          <button id="stop-test" class="button" type="button" disabled>停止</button>
+          <button id="export-results" class="button" type="button" disabled>导出 JSON</button>
+        </div>
+      </section>
+
+      <section class="status-band" aria-live="polite" aria-atomic="false">
+        <div class="status-line">
+          <strong id="run-status">等待选择 app.asar</strong>
+          <span id="run-progress">0 / 0</span>
+        </div>
+        <progress id="progress" value="0" max="1">0%</progress>
+        <div class="metrics" aria-label="测试摘要">
+          <div><span>总数</span><strong id="metric-total">0</strong></div>
+          <div><span>直接通过</span><strong id="metric-direct">0</strong></div>
+          <div><span>回退恢复</span><strong id="metric-recovered">0</strong></div>
+          <div><span>未覆盖</span><strong id="metric-failed">0</strong></div>
+          <div><span>待测试</span><strong id="metric-pending">0</strong></div>
+        </div>
+      </section>
+
+      <section class="probe-band" aria-labelledby="probe-title">
+        <div class="probe-copy">
+          <h2 id="probe-title">当前探针</h2>
+          <p id="current-path">尚未开始</p>
+          <dl>
+            <div><dt>来源</dt><dd id="current-layer">-</dd></div>
+            <div><dt>大小</dt><dd id="current-size">-</dd></div>
+            <div><dt>阶段</dt><dd id="current-stage">-</dd></div>
+          </dl>
+        </div>
+        <video id="probe-video" muted playsinline preload="auto" aria-label="当前媒体测试画面"></video>
+      </section>
+
+      <section class="results-band" aria-labelledby="results-title">
+        <div class="results-heading">
+          <h2 id="results-title">逐项结果</h2>
+          <span id="profile-status">Profile：未检查</span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">资源</th>
+                <th scope="col">来源</th>
+                <th scope="col">大小</th>
+                <th scope="col">Blob 路径</th>
+                <th scope="col">兼容回退</th>
+                <th scope="col">最终</th>
+              </tr>
+            </thead>
+            <tbody id="results-body">
+              <tr class="empty-row"><td colspan="6">尚无测试结果</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>仅处理所选本地文件；不上传、不解包、不持久化。</span>
+      <span id="release-state">临时 URL：0</span>
+    </footer>
+  </body>
+</html>

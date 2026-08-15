@@ -469,63 +469,155 @@
       videoFallbacks.delete(video)
     }
 
+    function fallbackIsCurrent(video, state, token) {
+      return videoFallbacks.get(video) === state && token === state.token
+    }
+
+    function releaseFallbackHandle(state) {
+      if (state.handle) state.handle.release()
+      state.handle = null
+      state.handleKind = ''
+    }
+
+    function visualFallbackDetail(handle, reason) {
+      return [
+        handle && handle.videoCodec,
+        handle && handle.audioCodec,
+        handle && handle.sourceLayerId,
+        reason,
+      ].filter(Boolean).join(' / ')
+    }
+
+    function warnVisualFallback(state, source, handle, reason) {
+      if (state.visualWarned) return
+      state.visualWarned = true
+      var layer = handle && handle.sourceLayerId || 'unknown-layer'
+      var codecs = [handle && handle.videoCodec, handle && handle.audioCodec].filter(Boolean).join(', ')
+      var message = '[DC media] Visual-only recovery dropped AAC audio: ' + source +
+        ' (layer: ' + layer + (codecs ? ', codecs: ' + codecs : '') + ') after ' + reason
+      if (target.console && typeof target.console.warn === 'function') target.console.warn(message)
+    }
+
+    function prepareVisualFallback(video, carrier, source, state, token, reason) {
+      releaseFallbackHandle(state)
+      if (typeof vfs.createVisualOnlyMediaObjectUrl !== 'function' || !DCWeb.Mp4VisualFallback) {
+        state.phase = 'failed'
+        publishVideoFallback('unavailable', source, 'No eligible MediaSource or visual-only representation')
+        return
+      }
+      state.phase = 'preparing-visual'
+      publishVideoFallback('visual-only-preparing', source, reason)
+      Promise.resolve(vfs.createVisualOnlyMediaObjectUrl(source)).then(function (handle) {
+        if (!fallbackIsCurrent(video, state, token)) {
+          if (handle) handle.release()
+          return
+        }
+        if (!handle) {
+          state.phase = 'failed'
+          publishVideoFallback('unavailable', source, 'Not an eligible progressive H.264/AAC MP4')
+          return
+        }
+        state.handle = handle
+        state.handleKind = 'visual-only'
+        state.phase = 'retrying-visual'
+        warnVisualFallback(state, source, handle, reason)
+        nativeSetAttribute.call(carrier, 'src', handle.url)
+        publishVideoFallback('visual-only-retrying', source, visualFallbackDetail(handle, reason))
+        if (typeof video.load === 'function') video.load()
+      }).catch(function (error) {
+        if (!fallbackIsCurrent(video, state, token)) return
+        state.phase = 'failed'
+        publishVideoFallback('failed', source, error && error.message ? error.message : error)
+      })
+    }
+
+    function prepareMediaSourceFallback(video, carrier, source, state, token, reason) {
+      if (typeof vfs.createMediaSourceObjectUrl !== 'function' || !DCWeb.MediaSourceFallback) {
+        prepareVisualFallback(video, carrier, source, state, token, reason)
+        return
+      }
+      state.phase = 'preparing-mse'
+      publishVideoFallback('mse-preparing', source, reason)
+      Promise.resolve(vfs.createMediaSourceObjectUrl(source, DCWeb.MediaSourceFallback.MAX_BYTES)).then(function (handle) {
+        if (!fallbackIsCurrent(video, state, token)) {
+          if (handle) handle.release()
+          return
+        }
+        if (!handle) {
+          prepareVisualFallback(video, carrier, source, state, token, reason)
+          return
+        }
+        state.handle = handle
+        state.handleKind = 'mse'
+        state.phase = 'retrying-mse'
+        nativeSetAttribute.call(carrier, 'src', handle.url)
+        publishVideoFallback('mse-retrying', source, handle.mimeType)
+        Promise.resolve(handle.ready).then(function (result) {
+          if (!fallbackIsCurrent(video, state, token) || state.phase !== 'retrying-mse') return
+          if (result && result.ok) {
+            publishVideoFallback('mse-buffered', source, handle.mimeType)
+            return
+          }
+          var detail = result && (result.error || result.state) || 'MediaSource append failed'
+          prepareVisualFallback(video, carrier, source, state, token, detail)
+        }).catch(function (error) {
+          if (!fallbackIsCurrent(video, state, token) || state.phase !== 'retrying-mse') return
+          prepareVisualFallback(video, carrier, source, state, token, error && error.message ? error.message : error)
+        })
+        if (typeof video.load === 'function') video.load()
+      }).catch(function (error) {
+        if (!fallbackIsCurrent(video, state, token)) return
+        prepareVisualFallback(video, carrier, source, state, token, error && error.message ? error.message : error)
+      })
+    }
+
     function installVideoFallback(video, carrier, source) {
-      if (!video || !carrier || typeof vfs.createMediaSourceObjectUrl !== 'function' || !DCWeb.MediaSourceFallback) return
+      if (!video || !carrier) return
+      if (typeof vfs.createMediaSourceObjectUrl !== 'function' && typeof vfs.createVisualOnlyMediaObjectUrl !== 'function') return
       var extension = Path.extensionOf(source)
       if (extension !== '.mp4' && extension !== '.m4v') return
       var previous = videoFallbacks.get(video)
       if (previous && previous.carrier === carrier && previous.source === source) return
       releaseVideoFallback(video)
 
-      var state = { attempted: false, carrier: carrier, handle: null, retrying: false, source: source, token: 1 }
+      var state = {
+        attempted: false,
+        carrier: carrier,
+        handle: null,
+        handleKind: '',
+        phase: 'native',
+        source: source,
+        token: 1,
+        visualWarned: false,
+      }
       state.onRecovered = function () {
-        if (videoFallbacks.get(video) !== state || !state.retrying) return
-        state.retrying = false
-        publishVideoFallback('recovered', source, state.handle && state.handle.mimeType)
+        if (videoFallbacks.get(video) !== state) return
+        if (state.phase === 'retrying-mse') {
+          state.phase = 'recovered-mse'
+          publishVideoFallback('mse-recovered', source, state.handle && state.handle.mimeType)
+        } else if (state.phase === 'retrying-visual') {
+          state.phase = 'recovered-visual'
+          publishVideoFallback('visual-only-recovered', source, visualFallbackDetail(state.handle, 'loadedmetadata'))
+        }
       }
       state.onError = function () {
         var mediaError = video.error
         if (!mediaError || Number(mediaError.code) !== 4) return
-        if (state.retrying) {
-          state.retrying = false
-          publishVideoFallback('retry-failed', source, mediaError.message || 'MEDIA_ERR_SRC_NOT_SUPPORTED')
-          if (state.handle) state.handle.release()
-          state.handle = null
+        var reason = mediaError.message || 'MEDIA_ERR_SRC_NOT_SUPPORTED'
+        if (state.phase === 'retrying-mse') {
+          prepareVisualFallback(video, carrier, source, state, state.token, reason)
+          return
+        }
+        if (state.phase === 'retrying-visual') {
+          state.phase = 'failed'
+          publishVideoFallback('visual-only-failed', source, reason)
+          releaseFallbackHandle(state)
           return
         }
         if (state.attempted) return
         state.attempted = true
         var token = state.token
-        publishVideoFallback('preparing', source, mediaError.message || 'MEDIA_ERR_SRC_NOT_SUPPORTED')
-        Promise.resolve(vfs.createMediaSourceObjectUrl(source, DCWeb.MediaSourceFallback.MAX_BYTES)).then(function (handle) {
-          if (videoFallbacks.get(video) !== state || token !== state.token) {
-            if (handle) handle.release()
-            return
-          }
-          if (!handle) {
-            publishVideoFallback('unavailable', source, 'Unsupported, non-fragmented, or exceeds the MediaSource limit')
-            return
-          }
-          state.handle = handle
-          state.retrying = true
-          nativeSetAttribute.call(carrier, 'src', handle.url)
-          publishVideoFallback('retrying', source, handle.mimeType)
-          Promise.resolve(handle.ready).then(function (result) {
-            if (videoFallbacks.get(video) !== state || token !== state.token || !state.retrying) return
-            if (result && result.ok) {
-              publishVideoFallback('buffered', source, handle.mimeType)
-              return
-            }
-            state.retrying = false
-            publishVideoFallback('failed', source, result && (result.error || result.state) || 'MediaSource append failed')
-            handle.release()
-            state.handle = null
-          })
-          if (typeof video.load === 'function') video.load()
-        }).catch(function (error) {
-          if (videoFallbacks.get(video) !== state || token !== state.token) return
-          publishVideoFallback('failed', source, error && error.message ? error.message : error)
-        })
+        prepareMediaSourceFallback(video, carrier, source, state, token, reason)
       }
       if (video.addEventListener) {
         video.addEventListener('error', state.onError)

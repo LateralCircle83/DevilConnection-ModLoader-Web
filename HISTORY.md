@@ -8,12 +8,18 @@
 
 - Android Edge 的标题 fragmented MP4 在普通受管 Blob URL 路径中于 `loadedmetadata` 和 `play()` 之前失败，返回 `MEDIA_ERR_SRC_NOT_SUPPORTED` / `PipelineStatus::DEMUXER_ERROR_DETECTED_AAC`，而桌面 Chromium 可直接播放。同一字节复制为独立内存 Blob 后仍复现，排除了 ASAR range、`File.slice()` 高位偏移 backing store、Blob 字节缺失、用户激活和自动播放策略；相同字节经声明 `avc1.640028, mp4a.40.2` 的 `MediaSource` 可取得 metadata。因此将已确认的故障边界记录为 Android Chromium 普通 Blob 媒体输入路径对 fragmented MP4/AAC 的平台兼容性差异；没有 Chromium 上游问题编号前，不进一步断言具体内核提交或平台解码器缺陷。
 - 缺失的迷雾效果统一来自 `kiri2.mp4`。该文件使用普通 `ftyp/moov/mdat` MP4，无法进入只接受 `mvex/moof` 的 MSE 回退；画面是常规 H.264，附带的 AAC-LC 轨经完整解码确认全静音。Tyrano 未处理的 `video.play()` Promise 只负责暴露 `NotSupportedError`，不是自动播放策略失败。
+- Android 逐项媒体扫描进一步确认 `effect.mp4` 存在同类故障：它也是普通 `ftyp/moov/free/mdat` MP4，H.264 画面可完整解码，唯一 AAC-LC 轨的全部解码样本均为零；文件大小为 963,462 字节，SHA-256 为 `0151e07fec302ed5de5998dda6202b5120d7c0c2cc612e90c98640f04055c9bd`。
+- 对基础包和当前汉化覆盖后的最终资源做只读媒体审计：46 个 MP4 中有 40 个 fragmented MP4，其中 15 个带 AAC；现有 MSE 检查可识别全部 40 个，除 17.18 MiB 且只有 H.264 轨的 `title_main.mp4` 外均处于 16 MiB 回退上限内。`title_main.mp4` 由游戏标题循环插件自己的 MSE 路径读取，不属于普通 Blob/AAC 故障，但仍需处理未串行的 `SourceBuffer.appendBuffer()` 和大 ArrayBuffer 生命周期。
+- 最终资源中的 559 个独立音频均可被媒体探针解析，编码为 556 个 Vorbis 和 3 个 MP3，没有发现 AAC 同类封装；最长 BGM 解码为双声道 Float32 PCM 的理论体积约 108.6 MiB。另有 12 个压缩体积超过 16 MiB 的 APNG，单帧 RGBA 约 3.9–9.9 MiB，按现有一次建立所有帧图像的行为计算，完整帧上界约 124–347 MiB，需在真机测量实际峰值后以可选性能策略处理。
 
 ### 新增
 
+- 增加独立媒体兼容诊断页：按基础包和所选模组的最终覆盖顺序枚举视频，逐项测试 Blob 首帧，并在错误码 4 后按正式运行时顺序尝试保声 MSE 与普通 MP4 仅画面回退；测试全程只保留一个媒体元素和一个临时 URL，可停止并导出不含归档内容的 JSON。维护用 `selftest` 模式会在页面内生成一个有效视频和一个损坏 MP4 的内存 ASAR，验证成功、失败和释放分支。
+- 增加普通 MP4 仅画面兜底：受管 MP4/M4V 首次返回错误码 4 且保声 MSE 不适用或失败后，只对结构完整、非分片、恰有一条 H.264 和一条 AAC 轨的文件生成等长复合 Blob；仅将音频 `trak` 类型替换为 `free`，顶层 box 以范围切片扫描，`moov` 读取上限为 4 MiB，不因大视频复制完整文件。降级时控制台输出包含逻辑路径、VFS 层、codec 和原始错误的警告，失败、换源和退出均释放临时 URL。
+- 严格静音视频 Profile 现在允许未知模组覆盖委托给运行时：最终来源为 `mod` 且大小或摘要不匹配时记录 `delegated` 而不执行内容转换；精确匹配的模组资源仍应用补丁，基础游戏版本未知、读取失败或转换失败仍中止会话。
 - 增加资源就绪层：Tyrano `image` 标签在原始节点插入和淡入前等待预加载及 `decode()`，不对最终图片增加全局隐藏样式；已有视频预加载回调等待可播放状态并记录事件，但不修改视觉属性，继续服从游戏原有的 `movie_with_bg` 交接时序。
-- 增加受限 fragmented MP4 恢复：受管 MP4/M4V 首次返回错误码 4 后，只有在文件不超过 16 MiB、严格包含 `ftyp/moov/mvex/moof`、可解析 AVC/AAC codec 且 MSE 明确支持时，才用一个 `SourceBuffer` 重载原元素一次；换源或结束会话时释放全部临时资源。
-- 增加严格版本匹配的迷雾视频 Profile 补丁：只对大小及 SHA-256 均匹配的 `kiri2.mp4` 在内存中将唯一全静音 AAC `trak` 等长标记为 `free`，保留 H.264 画面、文件布局和所有视频 chunk offset；二进制补丁读取上限为 1 MiB，摘要计算不依赖局域网 HTTP 下不可用的安全上下文 API。
+- 增加受限 fragmented MP4 恢复：受管 MP4/M4V 首次返回错误码 4 后，只有在文件不超过 16 MiB、严格包含 `ftyp/moov/mvex/moof`、可解析 AVC/AAC codec 且 MSE 明确支持时，才用一个 `SourceBuffer` 重载原元素一次；不适用或失败后才允许进入普通 MP4 仅画面兜底，换源或结束会话时释放全部临时资源。
+- 增加严格版本匹配的静音视频 Profile 补丁：分别对大小及 SHA-256 均匹配的 `kiri2.mp4` 和 `effect.mp4` 在内存中将唯一全静音 AAC `trak` 等长标记为 `free`，保留 H.264 画面、文件布局和所有视频 chunk offset；每个补丁独立校验且读取上限为 1 MiB，摘要计算不依赖局域网 HTTP 下不可用的安全上下文 API。
 - 将存储准备前移到启动握手，使宿主 Start 的可信点击可同步解锁音频并调用原始 `TYRANO.init()`，不引入覆盖可见按钮的 iframe 代理。
 - 在 Tyrano 适配边界增加有界预加载调度器：限制图片、音频和视频并发，合并语义相同的同 URL 在途请求，并支持超时放行、页面退出取消及分类遥测。
 - 将临时静态服务器改为零依赖的 Node.js 工具，启动时同时显示本机与可用局域网 IPv4 地址；服务器仅提供网页所需文件并拒绝 ASAR 和目录访问。

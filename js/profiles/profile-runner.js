@@ -15,6 +15,7 @@
       sourceLayerId: '',
       status: 'pending',
       target: patch.target,
+      unsupportedMod: patch.unsupportedMod || '',
     }
   }
 
@@ -141,6 +142,9 @@
     if (patch.required !== true) throw new TypeError('Profile patch ' + patch.id + ' must be declared as required')
     if (patch.failure !== 'abort-session') throw new TypeError('Profile patch ' + patch.id + ' must abort the session on failure')
     if (!Array.isArray(patch.signatures) || !patch.signatures.length) throw new TypeError('Profile patch ' + patch.id + ' requires strict source signatures')
+    if (patch.unsupportedMod !== undefined && patch.unsupportedMod !== 'delegate-to-runtime') {
+      throw new TypeError('Profile patch ' + patch.id + ' has an invalid unsupportedMod policy')
+    }
     var format = patch.format || 'text'
     if (format !== 'text' && format !== 'binary') throw new TypeError('Profile patch ' + patch.id + ' has an invalid format')
     if (format === 'binary' && (!Number.isInteger(patch.maxBytes) || patch.maxBytes <= 0)) {
@@ -164,6 +168,13 @@
     if (typeof patch.transform !== 'function') throw new TypeError('Profile patch ' + patch.id + ' requires a transform function')
   }
 
+  function delegateUnsupportedMod(patch, state, detail) {
+    if (patch.unsupportedMod !== 'delegate-to-runtime' || state.sourceKind !== 'mod') return false
+    state.status = 'delegated'
+    state.message = '未知模组覆盖未执行游戏版本专用转换，已交由运行时兼容层：' + detail
+    return true
+  }
+
   async function run(profile, resolver) {
     if (!profile || !profile.id) throw new TypeError('ProfileRunner requires a game profile')
     if (!resolver) throw new TypeError('ProfileRunner requires an asset resolver')
@@ -171,7 +182,7 @@
     var patches = profile.patches || []
     var report = createReport(profile)
     var patchIds = Object.create(null)
-    for (var index = 0; index < patches.length; index++) {
+    patchLoop: for (var index = 0; index < patches.length; index++) {
       var patch = patches[index]
       var state = report.patches[index]
       validatePatch(patch)
@@ -192,6 +203,7 @@
           var blob = resolver.getBlob(patch.target)
           if (!blob || typeof blob.arrayBuffer !== 'function') throw new Error('Binary target is unavailable')
           if (blob.size > patch.maxBytes) {
+            if (delegateUnsupportedMod(patch, state, '资源大小超过已知补丁范围')) continue patchLoop
             fail(report, state, 'unsupported', (patch.name || patch.id) + ' 超过补丁读取上限：' + blob.size + ' > ' + patch.maxBytes)
           }
           source = await blob.arrayBuffer()
@@ -207,11 +219,13 @@
         for (var binaryIndex = 0; binaryIndex < signatures.length; binaryIndex++) {
           var binaryRule = signatures[binaryIndex]
           if (binaryRule.size !== undefined && source.byteLength !== binaryRule.size) {
+            if (delegateUnsupportedMod(patch, state, '资源大小与已知版本不匹配')) continue patchLoop
             fail(report, state, 'unsupported', (binaryRule.name || patch.name || patch.id) + ' 的大小不受支持：预期 ' + binaryRule.size + ' 字节，实际 ' + source.byteLength + ' 字节')
           }
           if (binaryRule.sha256) {
             digest = digest || sha256(source)
             if (digest !== binaryRule.sha256.toLowerCase()) {
+              if (delegateUnsupportedMod(patch, state, '资源摘要与已知版本不匹配')) continue patchLoop
               fail(report, state, 'unsupported', (binaryRule.name || patch.name || patch.id) + ' 的 SHA-256 不受支持')
             }
           }
@@ -221,6 +235,7 @@
           var rule = signatures[signatureIndex]
           var actual = countMatches(source, rule.text)
           if (actual !== rule.count) {
+            if (delegateUnsupportedMod(patch, state, '源码特征与已知版本不匹配')) continue patchLoop
             fail(
               report,
               state,

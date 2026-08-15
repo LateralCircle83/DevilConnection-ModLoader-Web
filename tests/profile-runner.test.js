@@ -79,6 +79,51 @@ async function main() {
   assert.deepEqual(Array.from(preparedBinary.value), [9, 2, 3, 4])
   assert.equal(preparedBinary.mime, 'video/mp4')
 
+  preparedBinary = null
+  const delegatedProfile = {
+    id: 'delegated-mod-video',
+    patches: [{
+      ...binaryProfile.patches[0],
+      signatures: [{ size: 5 }],
+      unsupportedMod: 'delegate-to-runtime',
+    }],
+  }
+  const delegatedReport = await window.DCWeb.ProfileRunner.run(delegatedProfile, {
+    getBlob() { return new Blob([binarySource]) },
+    prepareBinary() { throw new Error('delegated patches must not prepare content') },
+    resolve(path) { return { kind: 'mod', layerId: 'mod:unknown-video', path } },
+  })
+  assert.equal(delegatedReport.status, 'ready')
+  assert.equal(delegatedReport.patches[0].status, 'delegated')
+  assert.equal(delegatedReport.patches[0].sourceLayerId, 'mod:unknown-video')
+  assert.match(delegatedReport.patches[0].message, /已交由运行时兼容层/)
+  assert.equal(preparedBinary, null)
+
+  const oversizedDelegatedReport = await window.DCWeb.ProfileRunner.run({
+    id: 'oversized-mod-video',
+    patches: [{ ...binaryProfile.patches[0], maxBytes: 3, unsupportedMod: 'delegate-to-runtime' }],
+  }, {
+    getBlob() {
+      return {
+        size: 4,
+        arrayBuffer() { throw new Error('oversized delegated mods must not be read') },
+      }
+    },
+    resolve(path) { return { kind: 'mod', layerId: 'mod:oversized-video', path } },
+  })
+  assert.equal(oversizedDelegatedReport.patches[0].status, 'delegated')
+
+  const exactModReport = await window.DCWeb.ProfileRunner.run({
+    id: 'known-mod-video',
+    patches: [{ ...binaryProfile.patches[0], unsupportedMod: 'delegate-to-runtime' }],
+  }, {
+    getBlob() { return new Blob([binarySource]) },
+    prepareBinary(path, value, mime) { preparedBinary = { mime, path, value: new Uint8Array(value) } },
+    resolve(path) { return { kind: 'mod', layerId: 'mod:known-video', path } },
+  })
+  assert.equal(exactModReport.patches[0].status, 'applied')
+  assert.deepEqual(Array.from(preparedBinary.value), [9, 2, 3, 4])
+
   await assert.rejects(
     window.DCWeb.ProfileRunner.run({
       id: 'unsupported-binary',
