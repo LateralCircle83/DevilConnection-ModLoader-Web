@@ -91,6 +91,7 @@
 - [x] **Android Chromium fragmented MP4 恢复**：真机以独立内存 Blob 复现相同 AAC demux 错误，排除 ASAR range/高位 slice/字节缺失。Host kernel 只在受管 MP4/M4V 返回错误码 4 后，对不超过 16 MiB 且严格识别 codec 的 fragmented ISO BMFF 建立一次 MSE 表示；不做 UA sniff、转码、游戏资源转换或永久缓存。
 - [x] **静音视频 Android 兼容**：`kiri2.mp4` 和 `effect.mp4` 都是普通非分片 MP4，无法进入 fragmented MSE 回退；其 AAC 轨经解码确认全静音。Game Profile 为两份资源声明独立的严格大小和 SHA-256 签名，仅将各自 `soun` 轨的等长容器类型改为 `free`，不移动 `mdat`、视频 sample 或 chunk offset，不改写磁盘和 ASAR。
 - [x] **未知模组 MP4 仅画面兜底**：Host kernel 只在受管 MP4/M4V 真实返回错误码 4 且保声 MSE 不可用或失败后，范围解析非分片 H.264/AAC 结构并生成等长无音轨复合 Blob；不整文件复制、不修改 VFS/ASAR，每个元素最多重试一次，明确警告并随来源生命周期释放。静音视频 Profile 对未知模组同名覆盖记录委托，基础游戏签名未知仍中止。
+- [x] **Remodal 等比缩放兼容**：第二层 Profile 严格匹配最终 `index.html` 的原版 Remodal 依赖、弹窗和按钮结构，再于 `</body>` 前注入独立缩放器；打开时恢复 700px 游戏设计宽度，按 Tyrano `base_scale` 和移动端可视视口等比居中，旋转后执行一次 250ms 有界再校准，关闭或退出时还原 DOM 与 wrapper 样式。不覆写 `$.alert` / `$.confirm`，未知页面覆盖直接中止。
 - [ ] **标题循环视频队列**：串行处理 `SourceBuffer.appendBuffer()`，等待 `updateend` 后再追加；处理 `InvalidStateError`、加载失败、重复切换和退出，并在结束时解除监听、关闭 `MediaSource`、撤销 URL。17.18 MiB 的 `title_main.mp4` 是唯一超过 Host MSE 回退上限的视频，但只有 H.264 轨且由该插件自己的 MSE 路径读取；归入游戏兼容档案，目标行为参考旧项目 `data/others/plugin/title_loop/main.js`。
 - [x] **存档持久化一致性**：使用版本化 localStorage 写前日志让同步存档调用在返回前留下可恢复值或删除标记；IndexedDB 串行提交失败时保留日志供重试，重新启动时 fallback 与日志覆盖同名旧数据库值，全量替换的 reset 标记防止删除项复活，且只有覆盖该版本的事务成功后才清理恢复记录。
 
@@ -111,7 +112,6 @@
 - 全量资源预取或无上限加载队列：与按需读取 ASAR 的目标冲突。
 - 未复现字体阻塞时全局注入 `font-display: swap`：可能重新引入字体闪烁；若只是体验偏好，应由可选模组或设置负责。
 - 未测量到具体场景卡顿时修改六处场景预载，或增加 `jump` / `call` 场景预取：本地 ASAR 收益不明，且会扩大解码内存和 Blob URL 生命周期。
-- 未复现布局问题时覆盖 Remodal 移动缩放：保留原版行为，出现具体问题后重新建立最小复现。
 - 并行加载 Tyrano 核心脚本：容易破坏脚本依赖顺序，收益不足以抵消风险。
 - 整份复制 `kag.js`、`kag.tag.js`、`kag.menu.js` 或 `libs.js`：版权、升级和模组覆盖成本过高。
 - 旧项目的加载遮罩、点击启动门、`configSave` 覆盖和调试库：当前壳已有对应能力或不属于运行必需功能。

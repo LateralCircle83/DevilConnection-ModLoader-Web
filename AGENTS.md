@@ -67,7 +67,7 @@ Only the latest iframe navigation may retain a pending `load` callback. Supersed
 The source tree has five top-level responsibility domains. Add files to the narrowest existing domain; do not recreate one-folder-per-primitive layout.
 
 - `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, decoded-image/playable-video readiness, bounded fragmented-MP4 recovery, last-resort progressive-MP4 visual recovery, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
-- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-silent-videos.js` owns the exact-version silent-track transforms, and `devil-connection.js` owns game identity, title reading, and the patch list.
+- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-silent-videos.js` owns the exact-version silent-track transforms, `devil-connection-remodal.js` owns the exact-version Remodal layout transform, and `devil-connection.js` owns game identity, title reading, and the patch list.
 - `js/mods/`: DCML package, ordering, hook, and configuration compatibility. Later enabled VFS layers win, but hooks execute individually in UI order.
 - `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; compatibility, save, source, and view modules own their corresponding manager behavior; `app.js` is composition only.
 - `js/vendor/`: third-party libraries retained without application ownership.
@@ -143,6 +143,8 @@ Because profile transforms see the final mod-overlaid resource, they may constra
 
 Resource readiness and both MP4 recovery paths are Host kernel responsibilities because they repair browser input/presentation contracts independently of one Devil Connection source signature. Do not duplicate them in a profile or expose them as optional mod policy. The `kiri2.mp4` and `effect.mp4` silent-track transforms are still content-specific and remain strict, version-gated profile patches applied before playback. Browser Runtime must not proactively generalize those transforms: its visual-only path is permitted solely after native code 4 and a preserving MediaSource attempt cannot recover the managed resource. Keep game-specific scene order, transition backgrounds, and `movie_with_bg` display timing out of the Host kernel.
 
+The original Remodal markup and 700px dialog coordinate width are likewise game-version-specific. `devil-connection-remodal.js` may strictly match the final `index.html` and inject a bounded runtime scaler before `</body>` so dialogs follow Tyrano's current `base_scale` and the mobile visual viewport. It must not patch `libs.js`, replace `$.alert` / `$.confirm`, or become a generic Host Remodal adapter. Unknown `index.html` overrides must abort rather than inherit an unverified layout assumption.
+
 `SessionPreparer` enforces the launch-time crossing order: immutable base-plus-mod VFS, required profile transforms, host browser-resource preparation, then `GameDocument`. Do not reproduce this sequence in `PlayerController`, a profile, or a mod module. Runtime host adapters remain non-optional after iframe bootstrap; mod hooks remain ordered user extensions rather than part of profile preparation.
 
 `ProfileRunner` is deliberately small and declarative. Every patch entry must provide an ID, target, required flag, strict signatures, failure policy, and transform. Text patches use exact source strings with expected counts. Binary patches must declare a positive read limit plus exact size and SHA-256 signatures, and may return only an `ArrayBuffer` or typed array. It publishes serializable status records and aborts the prepared session when a required base target is absent, unsupported, or fails. The narrow `unsupportedMod: 'delegate-to-runtime'` policy may skip only a signature-unknown final source whose VFS kind is `mod`; exact mod matches still transform, and transform/read failures still abort. Keep patch transforms in their own profile files; do not turn the runner into a general plugin API or allow manager-side patch toggles for required compatibility.
@@ -170,6 +172,7 @@ node tests\url-edge-cases.test.js
 node tests\media-source-fallback.test.js
 node tests\mp4-visual-fallback.test.js
 node tests\resource-readiness.test.js
+node tests\remodal-profile.test.js
 node tests\mod-loader.test.js
 node tests\mod-config.test.js
 node tests\mod-config-controller.test.js
