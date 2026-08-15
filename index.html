@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <title>DevilConnection Modloader web</title>
     <link rel="icon" href="./favicon.ico" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20260813c" />
+    <link rel="stylesheet" href="./styles.css?v=20260815a" />
     <script defer src="./js/kernel/namespace.js"></script>
     <script defer src="./js/vendor/jszip.min.js"></script>
     <script defer src="./js/vendor/lz-string.min.js"></script>
@@ -110,6 +110,19 @@
             存档
           </button>
           <button
+            id="manager-tab-debug"
+            class="manager-tab"
+            type="button"
+            role="tab"
+            aria-controls="manager-page-debug"
+            aria-selected="false"
+            data-page="debug"
+            tabindex="-1"
+          >
+            <span aria-hidden="true">05</span>
+            调试
+          </button>
+          <button
             id="manager-tab-about"
             class="manager-tab"
             type="button"
@@ -119,7 +132,7 @@
             data-page="about"
             tabindex="-1"
           >
-            <span aria-hidden="true">05</span>
+            <span aria-hidden="true">06</span>
             关于
           </button>
         </nav>
@@ -329,6 +342,43 @@
             <div id="save-storage-list" class="save-storage-list"></div>
           </details>
           <p class="save-origin-note">存档按协议、地址和端口隔离；模组配置和本地 ASAR 文件选择不包含在此处。</p>
+        </section>
+
+        <section
+          id="manager-page-debug"
+          class="manager-page"
+          role="tabpanel"
+          aria-labelledby="manager-tab-debug"
+          data-page="debug"
+          hidden
+        >
+          <p class="section-kicker">DEBUG TOOLS</p>
+          <h1>调试工具</h1>
+          <p class="page-lead">打开独立诊断页面；当前管理器与已准备的游戏会话不会被替换。</p>
+
+          <div class="debug-tool-list" role="list">
+            <article class="debug-tool-item" role="listitem">
+              <span class="debug-tool-index" aria-hidden="true">01</span>
+              <div class="debug-tool-content">
+                <div class="debug-tool-title-line">
+                  <h2>媒体兼容诊断</h2>
+                  <span class="debug-tool-scope">MP4 / AAC / MSE</span>
+                </div>
+                <p>检查归档视频的浏览器加载、保声回退与仅画面降级结果。</p>
+              </div>
+              <a
+                id="open-media-compatibility"
+                class="debug-tool-open"
+                href="./tools/media-compatibility.html"
+                target="_blank"
+                rel="noopener"
+                aria-label="在新标签页打开媒体兼容诊断"
+              >
+                <span>打开</span>
+                <span aria-hidden="true">&#8599;</span>
+              </a>
+            </article>
+          </div>
         </section>
 
         <section

@@ -753,6 +753,86 @@ p {
   background: #fffdf5;
 }
 
+.debug-tool-list {
+  border-top: 1px solid #aeb7b1;
+}
+
+.debug-tool-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 104px;
+  padding: 18px 8px;
+  border-bottom: 1px solid #c8cfc9;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.debug-tool-index {
+  color: #146b4c;
+  font: 800 13px/1 Consolas, monospace;
+  text-align: center;
+}
+
+.debug-tool-content {
+  min-width: 0;
+}
+
+.debug-tool-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.debug-tool-title-line h2 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.debug-tool-scope {
+  padding: 4px 6px;
+  border: 1px solid #9ba69f;
+  border-radius: 3px;
+  color: #56605a;
+  background: #f7f9f7;
+  font: 750 9px/1 Consolas, monospace;
+  white-space: nowrap;
+}
+
+.debug-tool-content p {
+  margin: 8px 0 0;
+  color: #5f6762;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.debug-tool-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 82px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #202421;
+  border-radius: 4px;
+  color: #ffffff;
+  background: #202421;
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.debug-tool-open:hover,
+.debug-tool-open:focus-visible {
+  border-color: #146b4c;
+  background: #146b4c;
+  outline: none;
+}
+
 .page-heading-row,
 .save-section-heading {
   display: flex;
@@ -1709,7 +1789,7 @@ p {
 
   .manager-nav {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
     padding: 9px 0 0;
   }
@@ -1727,7 +1807,7 @@ p {
 
   .manager-main {
     height: auto;
-    min-height: calc(100vh - 56px);
+    min-height: calc(100vh - 137px);
     overflow: visible;
     padding: 0 14px 36px;
   }
@@ -1804,6 +1884,17 @@ p {
   }
 
   .compatibility-state {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .debug-tool-item {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+    padding: 16px 4px;
+  }
+
+  .debug-tool-open {
     grid-column: 2;
     justify-self: start;
   }
