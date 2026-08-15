@@ -56,7 +56,7 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 9. The resulting document is assigned to a non-interactive game iframe through `srcdoc` before the user starts the game.
 10. Runtime interceptors route local fetch, XHR, Worker, DOM, CSS, markup, srcset, and jQuery resource requests through the prepared resolver.
 11. `ModRuntime` installs the bounded DCML compatibility API immediately, then executes enabled `hook.js` files in UI order after `DOMContentLoaded` so `document.body` exists.
-12. `TyranoAdapter` installs the bounded KAG preload scheduler, intercepts the automatic `TYRANO.init()` call, and reports readiness with the per-session launch token only after `ModRuntime.ready` settles. Do not rely on strict `MessageEvent.source` identity for `srcdoc` messages.
+12. `TyranoAdapter` installs the bounded KAG preload scheduler, intercepts the automatic `TYRANO.init()` call, and reports readiness with the per-session launch token only after storage and `ModRuntime.ready` settle. Do not rely on strict `MessageEvent.source` identity for `srcdoc` messages.
 13. The host start button becomes enabled only after that handshake. Its trusted click synchronously calls the already-loaded same-origin iframe, unlocks audio, and starts the original `TYRANO.init()` without another overlay.
 14. Tyrano loads `Config.tjs`, the KAG runtime, and the initial scenario through VFS-backed requests.
 
@@ -64,13 +64,13 @@ Do not reintroduce removed aliases: `window.DCAsar`, `window.DCVfsRuntime`, `win
 
 The source tree has five top-level responsibility domains. Add files to the narrowest existing domain; do not recreate one-folder-per-primitive layout.
 
-- `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
-- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared patches, `devil-connection-apng.js` owns the APNG transform, and `devil-connection.js` owns game identity, title reading, and the patch list.
+- `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, decoded-image/playable-video readiness, bounded fragmented-MP4 recovery, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
+- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-kiri-video.js` owns the exact-version silent-track transform, and `devil-connection.js` owns game identity, title reading, and the patch list.
 - `js/mods/`: DCML package, ordering, hook, and configuration compatibility. Later enabled VFS layers win, but hooks execute individually in UI order.
 - `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; compatibility, save, source, and view modules own their corresponding manager behavior; `app.js` is composition only.
 - `js/vendor/`: third-party libraries retained without application ownership.
 
-Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, `asset-resolver.js` owns prepared resources and URL lifetime, and `tyrano-preload-scheduler.js` owns only the transient bounded KAG preload queue. It must not become a permanent media cache or a global fetch/XHR/Range interceptor. Adapters do not absorb game-version source transforms.
+Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, and `asset-resolver.js` owns prepared resources and URL lifetime. `resource-readiness.js` owns bounded decode/playability waits and telemetry but must not change video visibility; `media-source-fallback.js` owns strict fragmented-MP4 inspection and one-buffer append but must not create URLs or decide retry policy. `tyrano-preload-scheduler.js` owns only the transient bounded KAG preload queue. None may become a permanent media cache or a global fetch/XHR/Range interceptor. Adapters do not absorb game-version source transforms.
 
 Keep behavior in the narrowest owning module. Do not create generic compatibility facades or duplicate module globals.
 
@@ -86,6 +86,8 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - Values crossing into the iframe realm may require realm-local `ArrayBuffer`, `Blob`, `Response`, or event objects.
 - Any Node-like global shim used with `instanceof` must be callable. In particular, keep `ModRuntime`'s `Buffer` shim as a function; the game's OGG metadata library performs `buffer instanceof Buffer` even when no mods are enabled.
 - The runtime must continue to support range requests used by media loaders.
+- Never globally hide managed images for readiness. The Tyrano adapter may delay the stable `image` tag boundary until its source preload and `decode()` complete, but the original tag must retain ownership of node insertion, `display`, `visibility`, `opacity`, transition timing, waits, and scenario progression. Video readiness may delay an existing preload callback and publish telemetry, but must not change visual state; the game's own `movie_with_bg` timing remains authoritative.
+- If a managed MP4/M4V fails with `MEDIA_ERR_SRC_NOT_SUPPORTED`, Browser Runtime may request one bounded `MediaSource` representation from `AssetResolver` and retry that element once. The fallback must require `ftyp/moov/mvex/moof`, derive AVC/AAC codecs from `avcC/esds`, pass `MediaSource.isTypeSupported()`, stay at or below 16 MiB, time out append after 15 seconds, and release its `SourceBuffer`, `MediaSource`, bytes, and transient URL on source change or session release.
 
 ## Save invariants
 
@@ -134,9 +136,11 @@ Treat patching as three responsibility layers, not as three ordinary VFS overrid
 
 Because profile transforms see the final mod-overlaid resource, they may constrain a mod that replaces the same path. Only genuine browser requirements belong there. Prefer adapter-level interception when a stable runtime contract exists; use source transformation only when the behavior cannot be corrected at a narrower boundary.
 
+Resource readiness and the fragmented-MP4 recovery are Host kernel responsibilities because they repair browser input/presentation contracts independently of one Devil Connection source signature. Do not duplicate them in a profile or expose them as optional mod policy. The `kiri2.mp4` silent-track transform is different: dropping a game asset's audio is content-specific, so it belongs to a strict, version-gated profile patch and must never be generalized in Browser Runtime. Keep game-specific scene order, transition backgrounds, and `movie_with_bg` display timing out of the Host kernel.
+
 `SessionPreparer` enforces the launch-time crossing order: immutable base-plus-mod VFS, required profile transforms, host browser-resource preparation, then `GameDocument`. Do not reproduce this sequence in `PlayerController`, a profile, or a mod module. Runtime host adapters remain non-optional after iframe bootstrap; mod hooks remain ordered user extensions rather than part of profile preparation.
 
-`ProfileRunner` is deliberately small and declarative. Every patch entry must provide an ID, target, required flag, strict signatures with expected counts, failure policy, and transform. It publishes serializable status records and aborts the prepared session when a required target is absent, unsupported, or fails. Keep patch transforms in their own profile files; do not turn the runner into a general plugin API or allow manager-side patch toggles for required compatibility.
+`ProfileRunner` is deliberately small and declarative. Every patch entry must provide an ID, target, required flag, strict signatures, failure policy, and transform. Text patches use exact source strings with expected counts. Binary patches must declare a positive read limit plus exact size and SHA-256 signatures, and may return only an `ArrayBuffer` or typed array. It publishes serializable status records and aborts the prepared session when a required target is absent, unsupported, or fails. Keep patch transforms in their own profile files; do not turn the runner into a general plugin API or allow manager-side patch toggles for required compatibility.
 
 The compatibility manager page is an observer, not an executor. It displays the report produced during session preparation and may export metadata-only JSON containing the profile, patch states, game version, and enabled mod identities. It must never export local file paths, handles, archive bytes, extracted content, or hook source. Consult `TODO.md` for accepted, conditional, deferred, and rejected candidates from the old-project audit.
 
@@ -158,10 +162,13 @@ Run after relevant changes:
 
 ```powershell
 node tests\url-edge-cases.test.js
+node tests\media-source-fallback.test.js
+node tests\resource-readiness.test.js
 node tests\mod-loader.test.js
 node tests\mod-config.test.js
 node tests\mod-config-controller.test.js
 node tests\game-profile.test.js
+node tests\kiri-video.test.js
 node tests\browser-save-store.test.js
 node tests\save-manager.test.js
 node tests\save-manager-controller.test.js
@@ -191,6 +198,7 @@ Minimum browser checks:
 - The initial `system/plugin.ks` audio preload must leave `lwaitload`, report zero VFS XHR failures, and reach the title scenario with and without a hook mod.
 - Imported standard and legacy-header mod ASARs render, reorder, toggle, and override resources in later-wins order.
 - Static and dynamic images, CSS backgrounds, audio, video, APNG, and scenario loads resolve.
+- Tyrano `image` tags begin their original insertion and transition only after preload/decode, without a global image visibility rule. Video readiness does not override game visibility. A code-4 failure on a supported fragmented MP4 retries once through MSE, while the exact `kiri2.mp4` profile transform exposes its unchanged H.264 picture without the all-silent AAC track.
 - Saving, refreshing, and loading does not request stale Blob URLs.
 - Reload and close release or replace session URLs at the correct time.
 - Player menu has no clipping/overflow and restores focus correctly.

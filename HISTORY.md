@@ -4,8 +4,17 @@
 
 ## 未发布
 
+### 兼容性调查
+
+- Android Edge 的标题 fragmented MP4 在普通受管 Blob URL 路径中于 `loadedmetadata` 和 `play()` 之前失败，返回 `MEDIA_ERR_SRC_NOT_SUPPORTED` / `PipelineStatus::DEMUXER_ERROR_DETECTED_AAC`，而桌面 Chromium 可直接播放。同一字节复制为独立内存 Blob 后仍复现，排除了 ASAR range、`File.slice()` 高位偏移 backing store、Blob 字节缺失、用户激活和自动播放策略；相同字节经声明 `avc1.640028, mp4a.40.2` 的 `MediaSource` 可取得 metadata。因此将已确认的故障边界记录为 Android Chromium 普通 Blob 媒体输入路径对 fragmented MP4/AAC 的平台兼容性差异；没有 Chromium 上游问题编号前，不进一步断言具体内核提交或平台解码器缺陷。
+- 缺失的迷雾效果统一来自 `kiri2.mp4`。该文件使用普通 `ftyp/moov/mdat` MP4，无法进入只接受 `mvex/moof` 的 MSE 回退；画面是常规 H.264，附带的 AAC-LC 轨经完整解码确认全静音。Tyrano 未处理的 `video.play()` Promise 只负责暴露 `NotSupportedError`，不是自动播放策略失败。
+
 ### 新增
 
+- 增加资源就绪层：Tyrano `image` 标签在原始节点插入和淡入前等待预加载及 `decode()`，不对最终图片增加全局隐藏样式；已有视频预加载回调等待可播放状态并记录事件，但不修改视觉属性，继续服从游戏原有的 `movie_with_bg` 交接时序。
+- 增加受限 fragmented MP4 恢复：受管 MP4/M4V 首次返回错误码 4 后，只有在文件不超过 16 MiB、严格包含 `ftyp/moov/mvex/moof`、可解析 AVC/AAC codec 且 MSE 明确支持时，才用一个 `SourceBuffer` 重载原元素一次；换源或结束会话时释放全部临时资源。
+- 增加严格版本匹配的迷雾视频 Profile 补丁：只对大小及 SHA-256 均匹配的 `kiri2.mp4` 在内存中将唯一全静音 AAC `trak` 等长标记为 `free`，保留 H.264 画面、文件布局和所有视频 chunk offset；二进制补丁读取上限为 1 MiB，摘要计算不依赖局域网 HTTP 下不可用的安全上下文 API。
+- 将存储准备前移到启动握手，使宿主 Start 的可信点击可同步解锁音频并调用原始 `TYRANO.init()`，不引入覆盖可见按钮的 iframe 代理。
 - 在 Tyrano 适配边界增加有界预加载调度器：限制图片、音频和视频并发，合并语义相同的同 URL 在途请求，并支持超时放行、页面退出取消及分类遥测。
 - 将临时静态服务器改为零依赖的 Node.js 工具，启动时同时显示本机与可用局域网 IPv4 地址；服务器仅提供网页所需文件并拒绝 ASAR 和目录访问。
 - 在管理器中新增“存档”页面，可查看手动/自动存档摘要及完整存储明细。

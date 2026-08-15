@@ -49,6 +49,48 @@ async function main() {
   assert.deepEqual(report.patches.map((patch) => patch.status), ['applied', 'applied'])
   assert.deepEqual(report.patches.map((patch) => patch.sourceLayerId), ['mod:test', 'mod:test'])
 
+  const binarySource = Uint8Array.from([1, 2, 3, 4])
+  const binaryDigest = require('node:crypto').createHash('sha256').update(binarySource).digest('hex')
+  let preparedBinary = null
+  const binaryResolver = {
+    getBlob() { return new Blob([binarySource]) },
+    prepareBinary(path, value, mime) { preparedBinary = { mime, path, value: new Uint8Array(value) } },
+    resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
+  }
+  const binaryProfile = {
+    id: 'binary-game',
+    patches: [{
+      failure: 'abort-session',
+      format: 'binary',
+      id: 'binary',
+      maxBytes: 16,
+      required: true,
+      signatures: [{ size: 4 }, { sha256: binaryDigest }],
+      target: 'movie.mp4',
+      transform(buffer) {
+        const output = new Uint8Array(buffer.slice(0))
+        output[0] = 9
+        return output
+      },
+    }],
+  }
+  const binaryReport = await window.DCWeb.ProfileRunner.run(binaryProfile, binaryResolver)
+  assert.equal(binaryReport.patches[0].status, 'applied')
+  assert.deepEqual(Array.from(preparedBinary.value), [9, 2, 3, 4])
+  assert.equal(preparedBinary.mime, 'video/mp4')
+
+  await assert.rejects(
+    window.DCWeb.ProfileRunner.run({
+      id: 'unsupported-binary',
+      patches: [{ ...binaryProfile.patches[0], signatures: [{ sha256: '0'.repeat(64) }] }],
+    }, binaryResolver),
+    function (error) {
+      assert.equal(error.name, 'ProfileCompatibilityError')
+      assert.equal(error.compatibility.patches[0].status, 'unsupported')
+      return true
+    },
+  )
+
   await assert.rejects(
     window.DCWeb.ProfileRunner.run(profile, createResolver('unsupported')),
     function (error) {

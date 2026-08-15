@@ -65,7 +65,7 @@
 - [x] 让内存转换后的资源成为当前会话中 `readText()`、`getBlob()` 和 Blob URL 的一致视图，避免后续消费者绕回未转换的 VFS 内容。
 - [x] 为现有 APNG 补丁声明补丁 ID、目标路径、必要性、失败方式和应用状态，并严格验证源码匹配次数。
 - [x] 将源码收拢为 `kernel / profiles / mods / shell / vendor` 五个职责域，迁移时保持 ASAR、VFS、资源重写、存档和启动模块的既有契约。
-- [x] 使用小型声明式 `ProfileRunner` 枚举必要补丁；每项补丁声明目标、严格源码特征、预期次数、失败策略与转换函数。
+- [x] 使用小型声明式 `ProfileRunner` 枚举必要补丁；文本补丁声明严格源码特征及预期次数，二进制补丁声明读取上限、精确大小和 SHA-256，所有补丁均声明目标、失败策略与转换函数。
 - [x] 增加只读“兼容性”管理页，显示必要补丁的“已应用、无需转换、不受支持、应用失败”状态及最终资源来源；必要补丁失败时阻止启动并自动打开该页。
 - [x] 支持导出不含本地路径、文件句柄、归档内容或源码的兼容性诊断 JSON。
 - [x] 让转换后的文本资源延迟到首次实际取用时才创建 Blob URL，并让本地文本 XHR 使用逻辑 `responseURL`，减少手机端大量小对象 URL 的常驻数量。
@@ -85,6 +85,9 @@
 ### 优先引入
 
 - [x] **有界 Tyrano 预加载调度器**：在壳核心的 Tyrano 适配边界包装 `kag.preload()` / `preloadAll()`，限制图片、音频与视频的同时加载和解码数量，合并语义相同的同 URL 在途任务；支持失败放行、30 秒超时、页面退出取消和 DOM 遥测，不做永久资源缓存，也不全局拦截普通 fetch/XHR 或媒体 Range 请求。
+- [x] **资源呈现就绪屏障**：作为 Host kernel 浏览器契约，在 Tyrano `image` 标签开始原始插入和淡入前完成预加载及 `decode()`，不再全局隐藏最终图片；既有视频预加载回调只等待和记录，不覆盖可见性、背景、场景推进或 `movie_with_bg` 时序。失败、超时和退出均失败放行。
+- [x] **Android Chromium fragmented MP4 恢复**：真机以独立内存 Blob 复现相同 AAC demux 错误，排除 ASAR range/高位 slice/字节缺失。Host kernel 只在受管 MP4/M4V 返回错误码 4 后，对不超过 16 MiB 且严格识别 codec 的 fragmented ISO BMFF 建立一次 MSE 表示；不做 UA sniff、转码、游戏资源转换或永久缓存。
+- [x] **迷雾视频 Android 兼容**：`kiri2.mp4` 是普通非分片 MP4，无法进入 fragmented MSE 回退；其 AAC 轨经解码确认全静音。Game Profile 在严格大小和 SHA-256 匹配后，仅将该 `soun` 轨的等长容器类型改为 `free`，不移动 `mdat`、视频 sample 或 chunk offset，不改写磁盘和 ASAR。
 - [ ] **标题循环视频队列**：串行处理 `SourceBuffer.appendBuffer()`，等待 `updateend` 后再追加；处理 `InvalidStateError`、加载失败、重复切换和退出，并在结束时解除监听、关闭 `MediaSource`、撤销 URL。归入游戏兼容档案，目标行为参考旧项目 `data/others/plugin/title_loop/main.js`。
 - [ ] **存档截图可靠收敛**：保证 `snapSave` 在截图、图片加载或 `toDataURL()` 失败时也只结束一次，并允许无缩略图存档，避免剧情永久卡住。优先通过 Tyrano 适配器包装稳定接口；只能依赖源码结构时再使用版本补丁。
 - [ ] **截图克隆隔离**：使用 html2canvas 的 `onclone` 只清理克隆文档中的文件输入或不可序列化状态，不修改正在运行的游戏 DOM。与存档截图可靠收敛一并实现。
@@ -102,7 +105,6 @@
 ### 暂缓
 
 - [ ] **WAAPI 资源错误处理**：先确认当前运行时是否仍会因 XHR 或解码失败让 `isLoading` 永久不归零，再设计有超时和失败状态的实现。
-- [ ] **角色和背景显示前预载**：会改变 `nextOrder` 时序，只在有明确白屏或竞态复现时处理。
 - [ ] **`jump` / `call` 场景预取**：本地 ASAR 的收益可能有限，必须先测量命中率、内存和 Blob URL 增长。
 - [ ] **Remodal 移动缩放**：仅在当前管理器或游戏模态框出现真实布局问题时引入。
 

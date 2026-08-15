@@ -41,7 +41,7 @@
   DCWeb.DevilConnectionProfile = {
     id: 'devil-connection',
     name: 'Devil Connection',
-    patches: [DCWeb.DevilConnectionApngPatch],
+    patches: [DCWeb.DevilConnectionApngPatch, DCWeb.DevilConnectionKiriVideoPatch],
     parseGameTitle: parseGameTitle,
     readTitle: readTitle,
     requiredFiles: REQUIRED_FILES.slice(),

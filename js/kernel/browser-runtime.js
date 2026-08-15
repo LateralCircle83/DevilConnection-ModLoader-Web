@@ -435,6 +435,8 @@
     var restore = typeof vfs.restoreObjectUrls === 'function'
       ? function (value) { return typeof value === 'string' ? vfs.restoreObjectUrls(value) : value }
       : function (value) { return value }
+    var readiness = DCWeb.ResourceReadiness ? DCWeb.ResourceReadiness.forTarget(target) : null
+    var videoFallbacks = new WeakMap()
     var logicalStyleDeclarations = new WeakSet()
     var nativeTextContentDescriptor = null
 
@@ -446,6 +448,116 @@
 
     var nativeSetAttribute = ElementPrototype.setAttribute
     var nativeGetAttribute = ElementPrototype.getAttribute
+
+    function publishVideoFallback(state, source, detail) {
+      var root = target.document && target.document.documentElement
+      if (!root || !root.setAttribute) return
+      root.setAttribute('data-dc-media-fallback-state', state)
+      root.setAttribute('data-dc-media-fallback-source', String(source || '').slice(-240))
+      root.setAttribute('data-dc-media-fallback-detail', String(detail || '').slice(0, 500))
+    }
+
+    function releaseVideoFallback(video) {
+      var state = videoFallbacks.get(video)
+      if (!state) return
+      state.token++
+      if (video.removeEventListener) {
+        video.removeEventListener('error', state.onError)
+        video.removeEventListener('loadedmetadata', state.onRecovered)
+      }
+      if (state.handle) state.handle.release()
+      videoFallbacks.delete(video)
+    }
+
+    function installVideoFallback(video, carrier, source) {
+      if (!video || !carrier || typeof vfs.createMediaSourceObjectUrl !== 'function' || !DCWeb.MediaSourceFallback) return
+      var extension = Path.extensionOf(source)
+      if (extension !== '.mp4' && extension !== '.m4v') return
+      var previous = videoFallbacks.get(video)
+      if (previous && previous.carrier === carrier && previous.source === source) return
+      releaseVideoFallback(video)
+
+      var state = { attempted: false, carrier: carrier, handle: null, retrying: false, source: source, token: 1 }
+      state.onRecovered = function () {
+        if (videoFallbacks.get(video) !== state || !state.retrying) return
+        state.retrying = false
+        publishVideoFallback('recovered', source, state.handle && state.handle.mimeType)
+      }
+      state.onError = function () {
+        var mediaError = video.error
+        if (!mediaError || Number(mediaError.code) !== 4) return
+        if (state.retrying) {
+          state.retrying = false
+          publishVideoFallback('retry-failed', source, mediaError.message || 'MEDIA_ERR_SRC_NOT_SUPPORTED')
+          if (state.handle) state.handle.release()
+          state.handle = null
+          return
+        }
+        if (state.attempted) return
+        state.attempted = true
+        var token = state.token
+        publishVideoFallback('preparing', source, mediaError.message || 'MEDIA_ERR_SRC_NOT_SUPPORTED')
+        Promise.resolve(vfs.createMediaSourceObjectUrl(source, DCWeb.MediaSourceFallback.MAX_BYTES)).then(function (handle) {
+          if (videoFallbacks.get(video) !== state || token !== state.token) {
+            if (handle) handle.release()
+            return
+          }
+          if (!handle) {
+            publishVideoFallback('unavailable', source, 'Unsupported, non-fragmented, or exceeds the MediaSource limit')
+            return
+          }
+          state.handle = handle
+          state.retrying = true
+          nativeSetAttribute.call(carrier, 'src', handle.url)
+          publishVideoFallback('retrying', source, handle.mimeType)
+          Promise.resolve(handle.ready).then(function (result) {
+            if (videoFallbacks.get(video) !== state || token !== state.token || !state.retrying) return
+            if (result && result.ok) {
+              publishVideoFallback('buffered', source, handle.mimeType)
+              return
+            }
+            state.retrying = false
+            publishVideoFallback('failed', source, result && (result.error || result.state) || 'MediaSource append failed')
+            handle.release()
+            state.handle = null
+          })
+          if (typeof video.load === 'function') video.load()
+        }).catch(function (error) {
+          if (videoFallbacks.get(video) !== state || token !== state.token) return
+          publishVideoFallback('failed', source, error && error.message ? error.message : error)
+        })
+      }
+      if (video.addEventListener) {
+        video.addEventListener('error', state.onError)
+        video.addEventListener('loadedmetadata', state.onRecovered)
+      }
+      videoFallbacks.set(video, state)
+    }
+
+    function guardResource(element, name, value) {
+      if (!element) return
+      var raw = String(value || '')
+      var logical = restore(raw)
+      var managed = logical !== raw
+      var nodeName = tagName(element)
+      if (nodeName === 'VIDEO' && name === 'src') {
+        if (managed) {
+          if (readiness) readiness.observeVideo(element, logical)
+          installVideoFallback(element, element, logical)
+        } else {
+          if (readiness) readiness.clear(element, 'video')
+          releaseVideoFallback(element)
+        }
+        return
+      }
+      if (nodeName === 'SOURCE' && name === 'src' && tagName(element.parentNode) === 'VIDEO') {
+        if (managed) {
+          if (readiness) readiness.observeVideo(element.parentNode, logical)
+          installVideoFallback(element.parentNode, element, logical)
+        } else releaseVideoFallback(element.parentNode)
+      }
+    }
+
     ElementPrototype.setAttribute = function (name, value) {
       var lowerName = attributeName(name)
       if (isResourceAttribute(this, lowerName)) value = resolve(String(value))
@@ -453,6 +565,7 @@
       if (lowerName === 'style') value = rewriteCssValue(String(value), resolve)
       var result = nativeSetAttribute.call(this, name, value)
       if (lowerName === 'style') markStyle(this)
+      guardResource(this, lowerName, value)
       return result
     }
     if (nativeGetAttribute) {
@@ -472,6 +585,7 @@
         if (lowerName === 'style') value = rewriteCssValue(String(value), resolve)
         var result = nativeSetAttributeNS.call(this, namespace, name, value)
         if (lowerName === 'style') markStyle(this)
+        guardResource(this, lowerName, value)
         return result
       }
     }
@@ -482,7 +596,7 @@
       }
     }
 
-    function patchProperty(ctor, property, rewrite) {
+    function patchProperty(ctor, property, rewrite, guardName) {
       if (!ctor || !ctor.prototype) return
       var descriptor = Object.getOwnPropertyDescriptor(ctor.prototype, property)
       if (!descriptor || !descriptor.set || descriptor.configurable === false) return
@@ -491,20 +605,22 @@
         enumerable: descriptor.enumerable,
         get: descriptor.get,
         set: function (value) {
-          descriptor.set.call(this, rewrite ? rewrite(String(value), resolve) : resolve(String(value)))
+          var replacement = rewrite ? rewrite(String(value), resolve) : resolve(String(value))
+          descriptor.set.call(this, replacement)
+          if (guardName) guardResource(this, guardName, replacement)
         },
       })
     }
 
     patchProperty(target.HTMLImageElement, 'src')
-    patchProperty(target.HTMLMediaElement, 'src')
-    patchProperty(target.HTMLSourceElement, 'src')
+    patchProperty(target.HTMLMediaElement, 'src', null, 'src')
+    patchProperty(target.HTMLSourceElement, 'src', null, 'src')
     patchProperty(target.HTMLScriptElement, 'src')
     patchProperty(target.HTMLInputElement, 'src')
     patchProperty(target.HTMLTrackElement, 'src')
     patchProperty(target.HTMLVideoElement, 'poster')
     patchProperty(target.HTMLImageElement, 'srcset', rewriteSrcset)
-    patchProperty(target.HTMLSourceElement, 'srcset', rewriteSrcset)
+    patchProperty(target.HTMLSourceElement, 'srcset', rewriteSrcset, 'srcset')
     patchProperty(target.HTMLLinkElement, 'href')
     patchProperty(target.HTMLIFrameElement, 'src')
     patchProperty(target.HTMLObjectElement, 'data')
@@ -654,6 +770,11 @@
           else node.textContent = css
         }
       }
+      if (nodeTagName === 'VIDEO' && node.hasAttribute('src')) {
+        guardResource(node, 'src', nativeGetAttribute.call(node, 'src'))
+      } else if (nodeTagName === 'SOURCE' && node.hasAttribute('src')) {
+        guardResource(node, 'src', nativeGetAttribute.call(node, 'src'))
+      }
       return node
     }
 
@@ -664,6 +785,25 @@
         node.querySelectorAll('[style],[srcset],img,video,audio,source,script,link,input,track,object,embed,iframe,style').forEach(rewriteElement)
       }
       return node
+    }
+
+    function releaseNode(node) {
+      if (!node || (node.nodeType !== 1 && node.nodeType !== 11)) return
+      if (readiness) {
+        readiness.clear(node, 'image')
+        readiness.clear(node, 'video')
+      }
+      if (tagName(node) === 'VIDEO') releaseVideoFallback(node)
+      if (tagName(node) === 'SOURCE' && tagName(node.parentNode) === 'VIDEO') releaseVideoFallback(node.parentNode)
+      if (node.querySelectorAll) {
+        node.querySelectorAll('img,video').forEach(function (element) {
+          if (readiness) {
+            readiness.clear(element, 'image')
+            readiness.clear(element, 'video')
+          }
+          if (tagName(element) === 'VIDEO') releaseVideoFallback(element)
+        })
+      }
     }
 
     var NodePrototype = target.Node && target.Node.prototype
@@ -730,6 +870,7 @@
         records.forEach(function (record) {
           if (record.type === 'childList') {
             record.addedNodes.forEach(rewriteNode)
+            record.removedNodes.forEach(releaseNode)
             if (record.target && tagName(record.target) === 'STYLE') rewriteElement(record.target)
           } else if (record.type === 'attributes') rewriteElement(record.target)
           else if (record.type === 'characterData' && record.target.parentNode && tagName(record.target.parentNode) === 'STYLE') {

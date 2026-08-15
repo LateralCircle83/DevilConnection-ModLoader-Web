@@ -76,15 +76,19 @@
     return this.urlsByKey.get(key) || ''
   }
 
-  ObjectUrlRegistry.prototype.create = function (key, path, blob) {
+  ObjectUrlRegistry.prototype.createSource = function (key, path, source, trackedBlob) {
     var existing = this.get(key)
     if (existing) return existing
-    var url = URL.createObjectURL(blob)
+    var url = URL.createObjectURL(source)
     this.urlsByKey.set(key, url)
     this.pathsByUrl.set(url, path)
-    this.addSize(key, path, blob)
+    this.addSize(key, path, trackedBlob || source)
     this.updatePeak()
     return url
+  }
+
+  ObjectUrlRegistry.prototype.create = function (key, path, blob) {
+    return this.createSource(key, path, blob, blob)
   }
 
   ObjectUrlRegistry.prototype.replace = function (key, path, blob) {
@@ -100,6 +104,16 @@
     this.addSize(key, path, blob)
     this.updatePeak()
     return url
+  }
+
+  ObjectUrlRegistry.prototype.revoke = function (key) {
+    var url = this.get(key)
+    if (!url) return false
+    URL.revokeObjectURL(url)
+    this.urlsByKey.delete(key)
+    this.pathsByUrl.delete(url)
+    this.removeSize(key)
+    return true
   }
 
   ObjectUrlRegistry.prototype.stats = function () {

@@ -9,8 +9,10 @@ require('../js/kernel/asar-archive.js')
 require('../js/kernel/layered-vfs.js')
 require('../js/kernel/object-url-registry.js')
 require('../js/kernel/style-processor.js')
+require('../js/kernel/media-source-fallback.js')
 require('../js/kernel/asset-resolver.js')
 require('../js/kernel/resource-rewriter.js')
+require('../js/kernel/resource-readiness.js')
 require('../js/kernel/browser-runtime.js')
 
 const { AsarArchive, AssetResolver, LayeredVfs, ResourcePath } = window.DCWeb
@@ -177,6 +179,29 @@ async function testPreparedTextIsTheActiveSessionResource() {
   assert.equal(resolver.getObjectUrlStats().count, 1)
   assert.throws(
     () => resolver.prepareText('data/css/main.css', '.hero{color:blue}', 'text/css'),
+    /after publishing its object URL/,
+  )
+  resolver.release()
+}
+
+async function testPreparedBinaryIsTheActiveSessionResource() {
+  const source = Buffer.from([1, 2, 3, 4])
+  const archive = new AsarArchive(
+    new Blob([source]),
+    {},
+    0,
+    new Map([entry('data/video/effect.mp4', 0, source.length)]),
+  )
+  const resolver = createResolver(archive)
+  const patched = Uint8Array.from([9, 8, 7, 6])
+
+  resolver.prepareBinary('data/video/effect.mp4', patched, 'video/mp4')
+  assert.deepEqual(Array.from(new Uint8Array(await resolver.getBlob('data/video/effect.mp4').arrayBuffer())), Array.from(patched))
+  const response = await fetch(resolver.getObjectUrl('data/video/effect.mp4'))
+  assert.equal(response.headers.get('content-type'), 'video/mp4')
+  assert.deepEqual(Array.from(new Uint8Array(await response.arrayBuffer())), Array.from(patched))
+  assert.throws(
+    () => resolver.prepareBinary('data/video/effect.mp4', source, 'video/mp4'),
     /after publishing its object URL/,
   )
   resolver.release()
@@ -611,12 +636,125 @@ function testRuntimeStyleTextRewritesBeforeInsertion() {
   assert.equal(ordinaryNode.textContent, 'blob URLs in ordinary text stay untouched: ' + blobUrl)
 }
 
+async function testManagedVideoRetriesOnceThroughMediaSource() {
+  const attributes = new WeakMap()
+  const rootAttributes = new Map()
+  const logicalUrl = 'data/video/title_intro.mp4'
+  const blobUrl = 'blob:http://127.0.0.1:4173/title-intro'
+  const mseUrl = 'blob:http://127.0.0.1:4173/title-intro-mse'
+  let createCalls = 0
+  let loadCalls = 0
+  let releaseCalls = 0
+
+  function Element(tag) {
+    this.tagName = tag || 'DIV'
+    this.nodeType = 1
+    this.parentNode = null
+    attributes.set(this, new Map())
+  }
+  Element.prototype.setAttribute = function (name, value) { attributes.get(this).set(name, String(value)) }
+  Element.prototype.getAttribute = function (name) { return attributes.get(this).get(name) || null }
+  Element.prototype.hasAttribute = function (name) { return attributes.get(this).has(name) }
+  Element.prototype.querySelectorAll = function () { return [] }
+
+  function MediaElement(tag) {
+    Element.call(this, tag)
+    this.error = null
+    this.networkState = 0
+    this.paused = true
+    this.readyState = 0
+    this.listeners = new Map()
+  }
+  MediaElement.prototype = Object.create(Element.prototype)
+  MediaElement.prototype.constructor = MediaElement
+  MediaElement.prototype.addEventListener = function (type, listener) {
+    const values = this.listeners.get(type) || []
+    values.push(listener)
+    this.listeners.set(type, values)
+  }
+  MediaElement.prototype.removeEventListener = function (type, listener) {
+    const values = this.listeners.get(type) || []
+    const index = values.indexOf(listener)
+    if (index !== -1) values.splice(index, 1)
+  }
+  MediaElement.prototype.emit = function (type) {
+    ;(this.listeners.get(type) || []).slice().forEach((listener) => listener.call(this, { type }))
+  }
+  MediaElement.prototype.load = function () { loadCalls++ }
+  Object.defineProperty(MediaElement.prototype, 'src', {
+    configurable: true,
+    enumerable: true,
+    get() { return attributes.get(this).get('src') || '' },
+    set(value) { attributes.get(this).set('src', String(value)) },
+  })
+
+  const target = {
+    Element,
+    HTMLMediaElement: MediaElement,
+    Promise,
+    document: {
+      documentElement: {
+        getAttribute(name) { return rootAttributes.get(name) || null },
+        setAttribute(name, value) { rootAttributes.set(name, String(value)) },
+      },
+    },
+    setTimeout,
+    clearTimeout,
+  }
+  const resolver = {
+    createMediaSourceObjectUrl(source, maxBytes) {
+      createCalls++
+      assert.equal(source, logicalUrl)
+      assert.equal(maxBytes, window.DCWeb.MediaSourceFallback.MAX_BYTES)
+      return Promise.resolve({
+        mimeType: 'video/mp4; codecs="avc1.640028, mp4a.40.2"',
+        ready: Promise.resolve({ ok: true, state: 'buffered' }),
+        release() { releaseCalls++; return true },
+        url: mseUrl,
+      })
+    },
+    getObjectUrl(value) { return value === logicalUrl ? blobUrl : value },
+    has(value) { return value === logicalUrl },
+    restoreObjectUrls(value) {
+      if (value === blobUrl || value === mseUrl) return logicalUrl
+      return value
+    },
+  }
+
+  loadRuntime().install(target, resolver)
+  const video = new MediaElement('VIDEO')
+  video.src = logicalUrl
+  assert.equal(attributes.get(video).get('src'), blobUrl)
+
+  video.error = { code: 3, message: 'decode failed' }
+  video.emit('error')
+  await Promise.resolve()
+  assert.equal(createCalls, 0)
+
+  video.error = { code: 4, message: 'PipelineStatus::DEMUXER_ERROR_DETECTED_AAC' }
+  video.emit('error')
+  video.emit('error')
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(createCalls, 1)
+  assert.equal(attributes.get(video).get('src'), mseUrl)
+  assert.equal(loadCalls, 1)
+  assert.equal(createCalls, 1)
+
+  video.error = null
+  video.emit('loadedmetadata')
+  assert.equal(rootAttributes.get('data-dc-media-fallback-state'), 'recovered')
+  video.src = 'https://example.com/external.mp4'
+  assert.equal(releaseCalls, 1)
+}
+
 async function main() {
   await testObjectUrlRoundTrip()
   await testFragmentsAndReservedFileNames()
   await testNestedStyles()
   await testCircularStylesDoNotRetainRevokedUrls()
   await testPreparedTextIsTheActiveSessionResource()
+  await testPreparedBinaryIsTheActiveSessionResource()
   await testXmlHttpRequestUsesLogicalResponseUrl()
   await testRealmLocalArrayBufferReadAvoidsCopyFallback()
   testLayerPrecedence()
@@ -627,6 +765,7 @@ async function main() {
   testJQueryAttributeReadCompatibility()
   testRuntimeInsertionRewritesBeforeNativeCall()
   testRuntimeStyleTextRewritesBeforeInsertion()
+  await testManagedVideoRetriesOnceThroughMediaSource()
   testPublicContracts()
   console.log('URL edge-case tests passed')
 }

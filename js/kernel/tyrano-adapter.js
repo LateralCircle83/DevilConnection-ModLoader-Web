@@ -6,8 +6,15 @@
   function installPreloadScheduler(target, kag) {
     if (!DCWeb.TyranoPreloadScheduler || typeof kag.preload !== 'function') return null
     var originalPreload = kag.preload
+    var readiness = DCWeb.ResourceReadiness ? DCWeb.ResourceReadiness.forTarget(target) : null
     var scheduler = new DCWeb.TyranoPreloadScheduler(target, function (storage, callback, options) {
-      return originalPreload.call(kag, storage, callback, options)
+      return originalPreload.call(kag, storage, function (element) {
+        if (!readiness) {
+          callback(element)
+          return
+        }
+        readiness.waitForPreload(element, storage).then(function () { callback(element) })
+      }, options)
     })
 
     kag.preload = function (storage, callback, options) {
@@ -25,6 +32,33 @@
       target.addEventListener('pagehide', function () { scheduler.cancel() }, { once: true })
     }
     return scheduler
+  }
+
+  function imageStorage($, pm) {
+    if (!pm || !pm.storage) return ''
+    var storage = String(pm.storage)
+    if ((typeof $.isHTTP === 'function' && $.isHTTP(storage)) || /^[a-z]+:/i.test(storage)) return storage
+    var folder = pm.folder || (pm.layer === 'base' ? 'bgimage' : 'fgimage')
+    return './data/' + folder + '/' + storage
+  }
+
+  function installImageReadiness($, kag) {
+    var masterTag = kag.ftag && kag.ftag.master_tag && kag.ftag.master_tag.image
+    var sourceTag = kag.tag && kag.tag.image
+    var imageTag = masterTag || sourceTag
+    if (!imageTag || typeof imageTag.start !== 'function') return
+    var originalStart = imageTag.start
+    if (originalStart.__dcImageReadiness || /\bkag\.preload\s*\(/.test(String(originalStart))) return
+
+    function start(pm) {
+      var tag = this
+      var storage = imageStorage($, pm)
+      if (!storage || !tag.kag || typeof tag.kag.preload !== 'function') return originalStart.call(tag, pm)
+      tag.kag.preload(storage, function () { originalStart.call(tag, pm) })
+    }
+    start.__dcImageReadiness = true
+    imageTag.start = start
+    if (masterTag && sourceTag && sourceTag !== masterTag && sourceTag.start === originalStart) sourceTag.start = start
   }
 
   function installKagAdapters(target, $, vfs) {
@@ -168,6 +202,7 @@
     DCWeb.TyranoSaveAdapter.install(target, $, vfs)
     installKagAdapters(target, $, vfs)
     installPreloadScheduler(target, kag)
+    installImageReadiness($, kag)
 
     var root = target.document && target.document.documentElement
     if (root) root.setAttribute('data-dc-launch-id', String(launchId))
@@ -178,9 +213,25 @@
     var readyPosted = false
     var readyPromise = null
     var modRuntimeReady = target.__dcModRuntimeReady || Promise.resolve()
+    var storageReady = Promise.resolve(target.api.storage.ready).catch(function (error) {
+      target.console.warn('Browser storage initialization failed; continuing with fallback storage', error)
+    })
+    var prerequisitesReady = Promise.all([storageReady, modRuntimeReady])
+
+    function publishStartError(error) {
+      target.console.error(error)
+      target.parent.postMessage({
+        type: 'dc-player-error',
+        launchToken: launchToken,
+        message: error.message,
+        stack: error.stack,
+      }, '*')
+      throw error
+    }
 
     function startGame() {
       if (started) return startPromise
+      if (!readyPosted) return Promise.reject(new Error('Game start requested before launch prerequisites were ready'))
       started = true
       if (root) root.setAttribute('data-dc-start-gate', 'starting')
       unlockAudio(target, vfs)
@@ -189,24 +240,18 @@
         target.TYRANO.kag.tmp.ready_audio = true
       } catch (error) {}
       target.parent.postMessage({ type: 'dc-player-started', launchId: launchId, launchToken: launchToken }, '*')
-      var storageReady = Promise.resolve(target.api.storage.ready).catch(function (error) {
-        target.console.warn('Browser storage initialization failed; continuing with fallback storage', error)
-      })
-      startPromise = Promise.all([storageReady, modRuntimeReady]).then(function () {
-        return new Promise(function (resolve) { target.requestAnimationFrame(resolve) })
-      }).then(function () {
-        if (root) root.setAttribute('data-dc-start-gate', 'started')
-        return originalInit.call(target.TYRANO)
-      }).catch(function (error) {
-        target.console.error(error)
-        target.parent.postMessage({
-          type: 'dc-player-error',
-          launchToken: launchToken,
-          message: error.message,
-          stack: error.stack,
-        }, '*')
-        throw error
-      })
+      if (root) {
+        var activation = target.navigator && target.navigator.userActivation
+        root.setAttribute('data-dc-start-path', 'host-bridge')
+        root.setAttribute('data-dc-start-user-active', String(Boolean(activation && activation.isActive)))
+        root.setAttribute('data-dc-start-user-has-been-active', String(Boolean(activation && activation.hasBeenActive)))
+        root.setAttribute('data-dc-start-gate', 'started')
+      }
+      try {
+        startPromise = Promise.resolve(originalInit.call(target.TYRANO)).catch(publishStartError)
+      } catch (error) {
+        startPromise = Promise.reject(error).catch(publishStartError)
+      }
       return startPromise
     }
 
@@ -214,7 +259,7 @@
     target.TYRANO.init = function () {
       if (started) return startPromise
       if (readyPromise) return readyPromise
-      readyPromise = Promise.resolve(modRuntimeReady).then(function () {
+      readyPromise = prerequisitesReady.then(function () {
         if (started || readyPosted) return null
         readyPosted = true
         if (root) root.setAttribute('data-dc-start-gate', 'ready')

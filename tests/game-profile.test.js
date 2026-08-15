@@ -7,6 +7,7 @@ require('../js/kernel/namespace.js')
 require('../js/kernel/resource-path.js')
 require('../js/profiles/profile-runner.js')
 require('../js/profiles/devil-connection-apng.js')
+require('../js/profiles/devil-connection-kiri-video.js')
 require('../js/profiles/devil-connection.js')
 
 const profile = window.DCWeb.DevilConnectionProfile
@@ -33,6 +34,9 @@ assert.equal(profile.parseGameTitle(';projectID=DevilConnection'), '')
 assert.equal(profile.patches[0].id, 'devil-connection-apng-browser-compat')
 assert.equal(profile.patches[0].required, true)
 assert.equal(profile.patches[0].target, 'tyrano/libs/apng.js')
+assert.equal(profile.patches[1].id, 'devil-connection-kiri-video-android-compat')
+assert.equal(profile.patches[1].target, 'data/video/kiri2.mp4')
+assert.equal(profile.patches[1].format, 'binary')
 
 async function testApngPatch() {
   let prepared = null
@@ -42,7 +46,8 @@ async function testApngPatch() {
     readText() { return Promise.resolve(apngSource()) },
     prepareText(path, text, mime) { prepared = { mime, path, text }; preparedText.set(path, text) },
   }
-  const result = await window.DCWeb.ProfileRunner.run(profile, resolver)
+  const apngProfile = { id: profile.id, name: profile.name, patches: [profile.patches[0]] }
+  const result = await window.DCWeb.ProfileRunner.run(apngProfile, resolver)
   assert.equal(result.status, 'ready')
   assert.equal(result.patches[0].status, 'applied')
   assert.equal(result.patches[0].sourceLayerId, 'mod:safe-apng')
@@ -52,7 +57,7 @@ async function testApngPatch() {
   assert.match(prepared.text, /if \(!apng \|\| !apng\.images/)
 
   await assert.rejects(
-    window.DCWeb.ProfileRunner.run(profile, {
+    window.DCWeb.ProfileRunner.run(apngProfile, {
       resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
       readText() { return Promise.resolve(apngSource().replace('const bytes = new Uint8Array(blob.buffer)', 'const bytes = blob')) },
     }),
