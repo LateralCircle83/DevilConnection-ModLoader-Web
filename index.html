@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <title>DevilConnection Modloader web</title>
     <link rel="icon" href="./favicon.ico" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20260815a" />
+    <link rel="stylesheet" href="./styles.css?v=20260815b" />
     <script defer src="./js/kernel/namespace.js"></script>
     <script defer src="./js/vendor/jszip.min.js"></script>
     <script defer src="./js/vendor/lz-string.min.js"></script>
@@ -40,12 +40,13 @@
     <script defer src="./js/profiles/devil-connection.js?v=20260815c"></script>
     <script defer src="./js/kernel/game-document.js?v=20260811b"></script>
     <script defer src="./js/shell/readme-view.js?v=20260813a"></script>
-    <script defer src="./js/shell/shell-view.js?v=20260815a"></script>
+    <script defer src="./js/shell/shell-view.js?v=20260816a"></script>
+    <script defer src="./js/shell/recommended-mods-controller.js?v=20260816a"></script>
     <script defer src="./js/shell/compatibility-view.js?v=20260815a"></script>
     <script defer src="./js/shell/session-preparer.js?v=20260813a"></script>
     <script defer src="./js/shell/player-controller.js?v=20260815a"></script>
     <script defer src="./js/shell/compatibility-controller.js?v=20260813a"></script>
-    <script defer src="./js/shell/app.js?v=20260813a"></script>
+    <script defer src="./js/shell/app.js?v=20260815a"></script>
   </head>
   <body>
     <main id="loader-view" class="manager-view">
@@ -236,20 +237,73 @@
             hidden
           />
 
-          <div class="mod-list-heading" aria-hidden="true">
-            <span>载入顺序</span>
-            <span>状态与操作</span>
-          </div>
-          <div id="mod-list" class="mod-list">
-            <div class="mod-empty">
-              <strong>尚未添加模组</strong>
-              <span>添加本地 DCML .asar 文件后会显示在这里</span>
-            </div>
+          <div class="mods-view-switch" role="tablist" aria-label="模组视图">
+            <button
+              id="mods-view-installed"
+              class="mods-view-option is-active"
+              type="button"
+              role="tab"
+              aria-controls="mods-panel-installed"
+              aria-selected="true"
+              data-mod-view="installed"
+            >
+              已添加
+            </button>
+            <button
+              id="mods-view-recommended"
+              class="mods-view-option"
+              type="button"
+              role="tab"
+              aria-controls="mods-panel-recommended"
+              aria-selected="false"
+              data-mod-view="recommended"
+              tabindex="-1"
+            >
+              推荐模组
+            </button>
           </div>
 
-          <p class="mod-trust-note">
-            带有 hook.js 的代码模组会在游戏页面中运行，请只载入可信来源的文件。
-          </p>
+          <section
+            id="mods-panel-installed"
+            class="mods-view-panel"
+            role="tabpanel"
+            aria-labelledby="mods-view-installed"
+            data-mod-panel="installed"
+          >
+            <div class="mod-list-heading" aria-hidden="true">
+              <span>载入顺序</span>
+              <span>状态与操作</span>
+            </div>
+            <div id="mod-list" class="mod-list">
+              <div class="mod-empty">
+                <strong>尚未添加模组</strong>
+                <span>添加本地 DCML .asar 文件后会显示在这里</span>
+              </div>
+            </div>
+
+            <p class="mod-trust-note">
+              带有 hook.js 的代码模组会在游戏页面中运行，请只载入可信来源的文件。
+            </p>
+          </section>
+
+          <section
+            id="mods-panel-recommended"
+            class="mods-view-panel"
+            role="tabpanel"
+            aria-labelledby="mods-view-recommended"
+            data-mod-panel="recommended"
+            hidden
+          >
+            <div class="mod-list-heading" aria-hidden="true">
+              <span>已验证模组</span>
+              <span>本地下载</span>
+            </div>
+            <div id="recommended-mod-list" class="recommended-mod-list" aria-live="polite">
+              <div class="mod-empty">
+                <strong>尚未读取推荐目录</strong>
+              </div>
+            </div>
+          </section>
         </section>
 
         <section

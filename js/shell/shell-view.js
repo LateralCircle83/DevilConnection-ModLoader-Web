@@ -31,6 +31,10 @@
     this.modInput = doc.getElementById('mod-asar-input')
     this.addModsButton = doc.getElementById('add-mods')
     this.modList = doc.getElementById('mod-list')
+    this.modViewTabs = Array.prototype.slice.call(doc.querySelectorAll('[data-mod-view]'))
+    this.modViewPanels = Array.prototype.slice.call(doc.querySelectorAll('[data-mod-panel]'))
+    this.recommendedModList = doc.getElementById('recommended-mod-list')
+    this.recommendedModListeners = []
     this.configDialog = doc.getElementById('mod-config-dialog')
     this.configForm = doc.getElementById('mod-config-form')
     this.configTitle = doc.getElementById('mod-config-title')
@@ -121,6 +125,24 @@
       if (control.dataset.action === 'up') handlers.moveMod(row.dataset.modId, -1)
       if (control.dataset.action === 'down') handlers.moveMod(row.dataset.modId, 1)
       if (control.dataset.action === 'remove') handlers.removeMod(row.dataset.modId)
+    })
+    this.modViewTabs.forEach(function (tab, index) {
+      tab.addEventListener('click', function () { view.showModView(tab.dataset.modView) })
+      tab.addEventListener('keydown', function (event) {
+        var targetIndex = -1
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') targetIndex = (index + view.modViewTabs.length - 1) % view.modViewTabs.length
+        if (event.key === 'ArrowRight' || event.key === 'ArrowDown') targetIndex = (index + 1) % view.modViewTabs.length
+        if (event.key === 'Home') targetIndex = 0
+        if (event.key === 'End') targetIndex = view.modViewTabs.length - 1
+        if (targetIndex === -1) return
+        event.preventDefault()
+        view.modViewTabs[targetIndex].focus()
+        view.showModView(view.modViewTabs[targetIndex].dataset.modView)
+      })
+    })
+    this.recommendedModList.addEventListener('click', function (event) {
+      if (!event.target.closest('[data-action="retry-recommended-mods"]')) return
+      view.recommendedModListeners.forEach(function (listener) { listener(true) })
     })
 
     this.configForm.addEventListener('submit', function (event) {
@@ -241,6 +263,24 @@
     if (typeof listener === 'function') this.pageListeners.push(listener)
   }
 
+  ShellView.prototype.showModView = function (viewName) {
+    if (viewName !== 'installed' && viewName !== 'recommended') return
+    this.modViewTabs.forEach(function (tab) {
+      var active = tab.dataset.modView === viewName
+      tab.classList.toggle('is-active', active)
+      tab.setAttribute('aria-selected', String(active))
+      tab.tabIndex = active ? 0 : -1
+    })
+    this.modViewPanels.forEach(function (panel) { panel.hidden = panel.dataset.modPanel !== viewName })
+    if (viewName === 'recommended') {
+      this.recommendedModListeners.forEach(function (listener) { listener(false) })
+    }
+  }
+
+  ShellView.prototype.onRecommendedModsRequested = function (listener) {
+    if (typeof listener === 'function') this.recommendedModListeners.push(listener)
+  }
+
   ShellView.prototype.bindSaveManager = function (handlers) {
     var view = this
     this.saveRefreshButton.addEventListener('click', function () { handlers.refresh() })
@@ -358,6 +398,7 @@
     this.modInput.disabled = value
     this.startButton.disabled = value || !this.launchReady
     this.tabs.forEach(function (tab) { tab.disabled = value })
+    this.modViewTabs.forEach(function (tab) { tab.disabled = value })
     this.modList.querySelectorAll('button, input').forEach(function (control) {
       control.disabled = value || control.dataset.baseDisabled === 'true'
     })
@@ -545,6 +586,61 @@
       })
       row.append(controls)
       this.modList.append(row)
+    }, this)
+  }
+
+  ShellView.prototype.renderRecommendedMods = function (result) {
+    var doc = this.doc
+    var state = result && result.state
+    var mods = result && Array.isArray(result.mods) ? result.mods : []
+    this.recommendedModList.replaceChildren()
+
+    if (state !== 'ready') {
+      var status = createElement(doc, 'div', 'mod-empty')
+      var title = state === 'loading' ? '正在读取推荐目录' : '推荐目录读取失败'
+      status.append(createElement(doc, 'strong', '', title))
+      if (state === 'failed') {
+        status.append(createElement(doc, 'span', '', result.message || '无法读取推荐模组清单'))
+        var retry = createElement(doc, 'button', 'recommended-mod-retry', '重试')
+        retry.type = 'button'
+        retry.dataset.action = 'retry-recommended-mods'
+        status.append(retry)
+      }
+      this.recommendedModList.append(status)
+      return
+    }
+
+    if (!mods.length) {
+      var empty = createElement(doc, 'div', 'mod-empty')
+      empty.append(createElement(doc, 'strong', '', '暂无推荐模组'))
+      empty.append(createElement(doc, 'span', '', '推荐目录已经就绪'))
+      this.recommendedModList.append(empty)
+      return
+    }
+
+    mods.forEach(function (mod) {
+      var row = createElement(doc, 'article', 'recommended-mod-item')
+      var content = createElement(doc, 'div', 'mod-content')
+      var titleLine = createElement(doc, 'div', 'mod-title-line')
+      titleLine.append(createElement(doc, 'strong', 'mod-name', mod.name))
+      titleLine.append(createElement(doc, 'span', 'mod-badge', 'VERIFIED'))
+      content.append(titleLine)
+      if (mod.description) content.append(createElement(doc, 'p', 'mod-description', mod.description))
+      var metadata = [mod.author, mod.version, mod.size ? formatBytes(mod.size) : ''].filter(Boolean)
+      if (metadata.length) content.append(createElement(doc, 'p', 'mod-meta', metadata.join(' · ')))
+      row.append(content)
+
+      var download = createElement(doc, 'a', 'recommended-mod-download')
+      download.href = mod.downloadUrl
+      download.download = mod.fileName
+      if (mod.external) {
+        download.target = '_blank'
+        download.rel = 'noopener noreferrer'
+      }
+      download.setAttribute('aria-label', '下载 ' + mod.name)
+      download.append(createElement(doc, 'span', '', '\u2193'), doc.createTextNode('下载'))
+      row.append(download)
+      this.recommendedModList.append(row)
     }, this)
   }
 

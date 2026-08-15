@@ -18,6 +18,7 @@ const allowedRootFiles = new Set([
   'tools/media-compatibility.js'
 ])
 const mimeTypes = {
+  '.asar': 'application/octet-stream',
   '.css': 'text/css; charset=utf-8',
   '.html': 'text/html; charset=utf-8',
   '.ico': 'image/x-icon',
@@ -26,6 +27,9 @@ const mimeTypes = {
   '.map': 'application/json; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8'
 }
+const recommendedPackagePattern = /^recommended-mods\/[A-Za-z0-9][A-Za-z0-9._-]{0,126}\.asar$/
+const recommendedFileNamePattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,126}\.asar$/
+const recommendedCatalogPath = path.join(rootDirectory, 'recommended-mods', 'catalog.json')
 
 function parsePort(value) {
   if (!/^\d+$/.test(value)) {
@@ -98,11 +102,23 @@ function sendError(response, statusCode, message) {
   response.end(message + '\n')
 }
 
-function resolvePublicFile(requestUrl) {
+function readRecommendedFileNames() {
+  try {
+    const catalog = JSON.parse(fs.readFileSync(recommendedCatalogPath, 'utf8'))
+    if (!catalog || catalog.schemaVersion !== 1 || !Array.isArray(catalog.mods)) return new Set()
+    return new Set(catalog.mods.map((item) => item && item.file).filter((file) => recommendedFileNamePattern.test(file)))
+  } catch (error) {
+    return new Set()
+  }
+}
+
+function resolvePublicFile(requestUrl, listedRecommendedFiles) {
   let pathname
+  let parsedUrl
 
   try {
-    pathname = decodeURIComponent(new URL(requestUrl, 'http://localhost').pathname)
+    parsedUrl = new URL(requestUrl, 'http://localhost')
+    pathname = decodeURIComponent(parsedUrl.pathname)
   } catch (error) {
     return null
   }
@@ -118,8 +134,15 @@ function resolvePublicFile(requestUrl) {
   }
 
   const relativePath = segments.length === 0 ? 'index.html' : segments.join('/')
-  const isAllowed = allowedRootFiles.has(relativePath) || relativePath.startsWith('js/')
-  if (!isAllowed || /(^|\/)\.[^/]/.test(relativePath) || /\.asar(?:\.unpacked)?(?:\/|$)/i.test(relativePath)) {
+  const isRecommendedCandidate = recommendedPackagePattern.test(relativePath)
+  const recommendedFiles = listedRecommendedFiles || (isRecommendedCandidate ? readRecommendedFileNames() : null)
+  const isRecommendedPackage = isRecommendedCandidate && recommendedFiles.has(path.basename(relativePath))
+  if (isRecommendedCandidate && (parsedUrl.search || parsedUrl.hash)) return null
+  const isAllowed = allowedRootFiles.has(relativePath) ||
+    relativePath.startsWith('js/') ||
+    relativePath === 'recommended-mods/catalog.json' ||
+    isRecommendedPackage
+  if (!isAllowed || /(^|\/)\.[^/]/.test(relativePath) || (/\.asar(?:\.unpacked)?(?:\/|$)/i.test(relativePath) && !isRecommendedPackage)) {
     return null
   }
 
@@ -130,6 +153,20 @@ function resolvePublicFile(requestUrl) {
   }
 
   return filePath
+}
+
+function createResponseHeaders(filePath, size) {
+  const headers = {
+    'Cache-Control': 'no-cache',
+    'Content-Length': size,
+    'Content-Type': mimeTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+    'X-Content-Type-Options': 'nosniff'
+  }
+  const relativePath = path.relative(rootDirectory, filePath).split(path.sep).join('/')
+  if (recommendedPackagePattern.test(relativePath)) {
+    headers['Content-Disposition'] = 'attachment; filename="' + path.basename(filePath) + '"'
+  }
+  return headers
 }
 
 function serve(request, response) {
@@ -150,12 +187,7 @@ function serve(request, response) {
       return
     }
 
-    response.writeHead(200, {
-      'Cache-Control': 'no-cache',
-      'Content-Length': stats.size,
-      'Content-Type': mimeTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
-      'X-Content-Type-Options': 'nosniff'
-    })
+    response.writeHead(200, createResponseHeaders(filePath, stats.size))
 
     if (request.method === 'HEAD') {
       response.end()
@@ -176,36 +208,44 @@ function serve(request, response) {
 
 const server = http.createServer(serve)
 
-server.on('error', (error) => {
-  if (error.code === 'EADDRINUSE') {
-    fail('Port ' + port + ' is already in use. Try: start_server.bat 8080')
-  }
-  fail('Unable to start server: ' + error.message)
-})
+if (require.main === module) {
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      fail('Port ' + port + ' is already in use. Try: start_server.bat 8080')
+    }
+    fail('Unable to start server: ' + error.message)
+  })
 
-server.listen(port, host, () => {
-  const lanAddresses = findLanAddresses()
+  server.listen(port, host, () => {
+    const lanAddresses = findLanAddresses()
 
-  console.log('')
-  console.log('DevilConnection Modloader web')
-  console.log('Local:   http://127.0.0.1:' + port + '/')
+    console.log('')
+    console.log('DevilConnection Modloader web')
+    console.log('Local:   http://127.0.0.1:' + port + '/')
 
-  if (lanAddresses.length > 0) {
-    lanAddresses.forEach((entry, index) => {
-      const label = index === 0 ? 'LAN:     ' : 'Other:   '
-      console.log(label + 'http://' + entry.address + ':' + port + '/ (' + entry.name + ')')
-    })
-  } else {
-    console.log('LAN:     No private IPv4 address was found.')
-  }
+    if (lanAddresses.length > 0) {
+      lanAddresses.forEach((entry, index) => {
+        const label = index === 0 ? 'LAN:     ' : 'Other:   '
+        console.log(label + 'http://' + entry.address + ':' + port + '/ (' + entry.name + ')')
+      })
+    } else {
+      console.log('LAN:     No private IPv4 address was found.')
+    }
 
-  console.log('')
-  console.log('Only devices on a trusted local network should use the LAN address.')
-  console.log('Press Ctrl+C to stop the temporary server.')
-  console.log('')
-})
+    console.log('')
+    console.log('Only devices on a trusted local network should use the LAN address.')
+    console.log('Press Ctrl+C to stop the temporary server.')
+    console.log('')
+  })
 
-process.on('SIGINT', () => {
-  console.log('\nStopping server...')
-  server.close(() => process.exit(0))
-})
+  process.on('SIGINT', () => {
+    console.log('\nStopping server...')
+    server.close(() => process.exit(0))
+  })
+}
+
+module.exports = {
+  createResponseHeaders,
+  recommendedPackagePattern,
+  resolvePublicFile,
+}

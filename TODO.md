@@ -92,6 +92,7 @@
 - [x] **静音视频 Android 兼容**：`kiri2.mp4` 和 `effect.mp4` 都是普通非分片 MP4，无法进入 fragmented MSE 回退；其 AAC 轨经解码确认全静音。Game Profile 为两份资源声明独立的严格大小和 SHA-256 签名，仅将各自 `soun` 轨的等长容器类型改为 `free`，不移动 `mdat`、视频 sample 或 chunk offset，不改写磁盘和 ASAR。
 - [x] **未知模组 MP4 仅画面兜底**：Host kernel 只在受管 MP4/M4V 真实返回错误码 4 且保声 MSE 不可用或失败后，范围解析非分片 H.264/AAC 结构并生成等长无音轨复合 Blob；不整文件复制、不修改 VFS/ASAR，每个元素最多重试一次，明确警告并随来源生命周期释放。静音视频 Profile 对未知模组同名覆盖记录委托，基础游戏签名未知仍中止。
 - [x] **Remodal 等比缩放兼容**：第二层 Profile 严格匹配最终 `index.html` 的原版 Remodal 依赖、弹窗和按钮结构，再于 `</body>` 前注入独立缩放器；打开时恢复 700px 游戏设计宽度，按 Tyrano `base_scale` 和移动端可视视口等比居中，旋转后执行一次 250ms 有界再校准，关闭或退出时还原 DOM 与 wrapper 样式。不覆写 `$.alert` / `$.confirm`，未知页面覆盖直接中止。
+- [x] **推荐模组静态目录**：模组页使用两列分段控件切换本地载入顺序与推荐目录；同源清单限制唯一 ID，以及本地直接子级 `.asar` 或受限 GitHub HTTPS 直链，版本、作者、说明及大小作为可选展示信息。下载不读入页面内存、不自动导入或修改当前会话；开发服务器只对白名单本地条目开放 ASAR，其他归档继续拒绝。
 - [ ] **标题循环视频队列**：串行处理 `SourceBuffer.appendBuffer()`，等待 `updateend` 后再追加；处理 `InvalidStateError`、加载失败、重复切换和退出，并在结束时解除监听、关闭 `MediaSource`、撤销 URL。17.18 MiB 的 `title_main.mp4` 是唯一超过 Host MSE 回退上限的视频，但只有 H.264 轨且由该插件自己的 MSE 路径读取；归入游戏兼容档案，目标行为参考旧项目 `data/others/plugin/title_loop/main.js`。
 - [x] **存档持久化一致性**：使用版本化 localStorage 写前日志让同步存档调用在返回前留下可恢复值或删除标记；IndexedDB 串行提交失败时保留日志供重试，重新启动时 fallback 与日志覆盖同名旧数据库值，全量替换的 reset 标记防止删除项复活，且只有覆盖该版本的事务成功后才清理恢复记录。
 

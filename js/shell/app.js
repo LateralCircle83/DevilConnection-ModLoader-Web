@@ -9,6 +9,7 @@
   var saveController = new global.DCWeb.SaveManagerController(view, saveManager, player)
   var compatibilityView = new global.DCWeb.CompatibilityView(global, global.document)
   var compatibilityController = new global.DCWeb.CompatibilityController(view, compatibilityView, global.DCWeb.DevilConnectionProfile)
+  var recommendedModsController = new global.DCWeb.RecommendedModsController(global, view)
   player.onCompatibilityChange(function (event) {
     if (event.state === 'checking') compatibilityController.checking(event.context)
     if (event.state === 'ready') compatibilityController.ready(event.report, event.context)
@@ -17,6 +18,7 @@
   player.bind()
   saveController.bind()
   compatibilityController.bind()
+  recommendedModsController.bind()
   global.document.documentElement.setAttribute('data-dc-shell-ready', 'true')
   player.restoreSources(false)
 })(window)

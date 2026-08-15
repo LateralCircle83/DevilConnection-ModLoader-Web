@@ -1,3 +1,7 @@
-*.asar
+/app.asar
 *.asar.unpacked/
-
+/recommended-mods/dc_doeru_plus.asar
+/recommended-mods/dc_kupya_plus.asar
+/recommended-mods/dc_modworkshop.asar
+/recommended-mods/dc_theatre.asar
+/recommended-mods/dc_translate_zh_cn.asar

@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "mods": [
+    {
+      "id": "dc_achievement",
+      "name": "模拟成就",
+      "description": "项目目录内已确认可用的成就兼容模组",
+      "author": "shouennyou",
+      "file": "dc_achievement.asar",
+      "size": 8882
+    },
+    {
+      "id": "dc_debug",
+      "name": "调试菜单",
+      "description": "游戏内调试工具（DEBUG 按钮）：数值编辑、存档导出、路线开关等",
+      "version": "1.0.0",
+      "author": "lllhhh2282",
+      "file": "dc_debug.asar",
+      "size": 29595
+    },
+    {
+      "id": "dc_doeru_plus",
+      "name": "更多二世多艾露",
+      "description": "第一周目连结佩恩时为其装备恶魔之翼，即可激活二世多艾露的专属剧情，由多艾尔替代库皮亚登场! (剧本原作者Bob69693)",
+      "version": "1.0.3",
+      "author": "Luoyu-Wangchai",
+      "file": "https://github.com/Luoyu-Wangchai/DevilConnection_DoeruPlus/releases/download/V1.0.3/dc_doeru_plus.asar",
+      "size": 7471528
+    },
+    {
+      "id": "dc_kupya_plus",
+      "name": "库皮亚交互增强",
+      "description": "后日谈的库皮亚新增一些台词；收藏室书架上必定出现小憩的库皮亚，且可以互动",
+      "version": "1.2",
+      "author": "Luoyu-Wangchai",
+      "file": "https://github.com/Luoyu-Wangchai/DevilConnection_KupyaPlus/releases/download/V1.2/dc_kupya_plus.asar",
+      "size": 722632
+    },
+    {
+      "id": "dc_mind_voice",
+      "name": "心声助手",
+      "description": "项目目录内已确认可用的心声提示模组",
+      "author": "shouennyou",
+      "file": "dc_mind_voice.asar",
+      "size": 7370
+    },
+    {
+      "id": "dc_modworkshop",
+      "name": "模组工坊",
+      "description": "标题画面新增「模组工坊」入口，集中陈列各模组的功能入口",
+      "version": "1.0.5",
+      "author": "Luoyu-Wangchai",
+      "file": "https://raw.githubusercontent.com/Luoyu-Wangchai/DevilConnection_ModLoader/main/runtime/external/insidemods/dc_modworkshop.asar",
+      "size": 443785
+    },
+    {
+      "id": "dc_safe_apng",
+      "name": "兼容型动画懒加载",
+      "description": "按需解码非关键 APNG，降低移动端启动内存峰值；可在启动前关闭",
+      "version": "1.0.0",
+      "author": "项目维护者",
+      "file": "dc_safe_apng.asar",
+      "size": 20603
+    },
+    {
+      "id": "dc_theatre",
+      "name": "库皮哒呀小剧场",
+      "description": "登上小剧场舞台，与库皮亚和德比伦即兴聊天互动！",
+      "version": "1.2.5",
+      "author": "Luoyu-Wangchai",
+      "file": "https://github.com/Luoyu-Wangchai/DevilConnection_Theatre/releases/download/V1.2.5/dc_theatre.asar",
+      "size": 1414502
+    },
+    {
+      "id": "dc_toolbox",
+      "name": "恶魔连结工具箱",
+      "description": "游戏内实时修改工具：收集解锁、数值编辑、路线开关、游戏变速与成就补发",
+      "version": "1.0.1",
+      "author": "Luoyu-Wangchai",
+      "file": "dc_toolbox.asar",
+      "size": 21386
+    },
+    {
+      "id": "dc_translate_zh_cn",
+      "name": "简体中文汉化补丁",
+      "description": "古今狐白日语社《恶魔连结》Ver1.01 汉化补丁，兼容特化版ModLoader",
+      "version": "1.0.2",
+      "author": "Luoyu-Wangchai",
+      "file": "https://github.com/Luoyu-Wangchai/DevilConnection_cn_dirty_txt/releases/download/V1.0.2/dc_translate_zh_cn.asar",
+      "size": 417030149
+    }
+  ]
+}

@@ -10,8 +10,8 @@ The application has no build step, package manager, backend, Service Worker, or 
 
 ## Non-negotiable constraints
 
-- Never unpack, rewrite, stage, or commit `*.asar` or `*.asar.unpacked` content.
-- Treat local ASAR files as user-owned test fixtures. Read them only when the task requires an end-to-end launch test.
+- Never unpack, rewrite, stage, or commit the game archive, arbitrary user-provided `*.asar`, or any `*.asar.unpacked` content. Curated packages directly under `recommended-mods/` are the sole exception and may be versioned when the maintainer has selected them for the bundled catalog.
+- Treat all other local ASAR files as user-owned test fixtures. Read them only when the task requires an end-to-end launch test. Keep the root `/app.asar` ignored; curated packages belong directly under `recommended-mods/`.
 - Do not add game assets, extracted source, or copyrighted content to the repository.
 - Keep archive access read-only and range-based. `AsarArchive` may parse the header and return `File.slice()` blobs; it must not own URL creation or runtime policy.
 - Do not commit unless the user explicitly requests a commit.
@@ -69,7 +69,7 @@ The source tree has five top-level responsibility domains. Add files to the narr
 - `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, decoded-image/playable-video readiness, bounded fragmented-MP4 recovery, last-resort progressive-MP4 visual recovery, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
 - `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-silent-videos.js` owns the exact-version silent-track transforms, `devil-connection-remodal.js` owns the exact-version Remodal layout transform, and `devil-connection.js` owns game identity, title reading, and the patch list.
 - `js/mods/`: DCML package, ordering, hook, and configuration compatibility. Later enabled VFS layers win, but hooks execute individually in UI order.
-- `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; compatibility, save, source, and view modules own their corresponding manager behavior; `app.js` is composition only.
+- `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; compatibility, save, source, recommended-mod catalog, and view modules own their corresponding manager behavior; `app.js` is composition only.
 - `js/vendor/`: third-party libraries retained without application ownership.
 
 Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, and `asset-resolver.js` owns prepared resources and URL lifetime. `resource-readiness.js` owns bounded decode/playability waits and telemetry but must not change video visibility; `media-source-fallback.js` owns strict fragmented-MP4 inspection and one-buffer append but must not create URLs or decide retry policy. `mp4-visual-fallback.js` owns range-based progressive-MP4 structure inspection and construction of an equal-length video-only Blob, but likewise must not create URLs, retry elements, or decide policy. `tyrano-preload-scheduler.js` owns only the transient bounded KAG preload queue. None may become a permanent media cache or a global fetch/XHR/Range interceptor. Adapters do not absorb game-version source transforms.
@@ -131,6 +131,15 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - Keep compatibility bounded. Do not add arbitrary filesystem writes, remote catalog loading, base-ASAR mutation, or full-archive buffers.
 - Hook code is trusted renderer code. Preserve the visible trust warning and do not imply sandbox isolation.
 
+## Recommended mod catalog
+
+- `recommended-mods/catalog.json` is the sole runtime index. It uses schema version `1`; every entry requires only `id`, `name`, and `file`. Description, version, author, and byte size are optional display metadata.
+- `file` is either a direct ASCII basename ending in `.asar` or an HTTPS URL on the explicit `github.com` / `raw.githubusercontent.com` allowlist whose final path segment is such a basename. Reject credentials, query strings, fragments, other hosts, subdirectories for local files, absolute local paths, and traversal.
+- The catalog controller may fetch only the same-origin static catalog and must build display content with DOM APIs. Downloads use a normal link; external packages open separately with `noopener noreferrer`. Neither path may read the package into browser memory, auto-import it, enable it, persist it, or alter the active mod plan.
+- The development server may expose only `recommended-mods/catalog.json` and strictly matched direct child packages that are present in the current catalog. Unlisted candidates must remain unreachable. Keep every other ASAR path blocked, including the root game fixture and `.asar.unpacked` paths, and send curated packages as attachments.
+- “Recommended” means that the maintainer has confirmed the package works well enough to distribute with this project; it does not remove the existing trusted-code warning.
+- Every published catalog entry must resolve either to one direct file under `recommended-mods/` or to one allowed GitHub HTTPS package URL. Keep `/app.asar` ignored, keep unlisted local candidates unreachable through the development server, and do not use a generated catalog or directory-listing API at runtime.
+
 ## Patch placement policy
 
 Treat patching as three responsibility layers, not as three ordinary VFS override layers:
@@ -159,6 +168,7 @@ The compatibility manager page is an observer, not an executor. It displays the 
 - Mod controls must communicate top-to-bottom load order and later-wins precedence; build imported metadata with DOM APIs, never manifest `innerHTML`.
 - The compatibility page must describe required transforms without presenting disable controls. A failed required transform automatically opens that page and leaves Start disabled.
 - The top-left player menu trigger must remain keyboard accessible and visible against arbitrary game scenes.
+- The Mods page keeps local load-order management and recommended downloads as two keyboard-accessible modes inside the existing page. The mobile switch remains two equal columns; recommended items and download commands must not overflow narrow viewports.
 - The full-screen menu must retain Escape/close behavior, focus containment, focus restoration, and mobile single-column layout.
 - Keep fixed controls stable in size and account for safe-area insets.
 - Do not expose implementation instructions or debug descriptions as normal in-app copy.
@@ -173,6 +183,7 @@ node tests\media-source-fallback.test.js
 node tests\mp4-visual-fallback.test.js
 node tests\resource-readiness.test.js
 node tests\remodal-profile.test.js
+node tests\recommended-mods.test.js
 node tests\mod-loader.test.js
 node tests\mod-config.test.js
 node tests\mod-config-controller.test.js
@@ -215,4 +226,4 @@ Minimum browser checks:
 - Reload and close release or replace session URLs at the correct time.
 - Player menu has no clipping/overflow and restores focus correctly.
 
-Before any requested commit, inspect staged paths and confirm that no ASAR or extracted game content is included.
+Before any requested commit, inspect staged paths and confirm that no root game archive, unlisted ASAR, or extracted game content is included. Versioned recommended packages must be direct local entries in `recommended-mods/catalog.json`; external entries must not retain duplicate tracked binaries.
