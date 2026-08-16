@@ -7,7 +7,6 @@
 ## 当前优先
 
 - [ ] **Profile 集成矩阵**：使用真实 `LayeredVfs` 与最终模组覆盖组合，覆盖同路径本体、精确匹配模组、未知模组和不受支持本体，不再扩充孤立的 resolver stub。
-- [ ] **标题循环视频队列**：串行处理 `SourceBuffer.appendBuffer()`，等待 `updateend` 后再追加；覆盖 `InvalidStateError`、加载失败、重复切换和退出，并在结束时解除监听、关闭 `MediaSource`、撤销 URL。背景调查见 `HISTORY.md` 的“未发布 / 兼容性调查”。
 
 ## 需要证据
 

@@ -9,11 +9,12 @@
 - Android Edge 的标题 fragmented MP4 在普通受管 Blob URL 路径中于 `loadedmetadata` 和 `play()` 之前失败，返回 `MEDIA_ERR_SRC_NOT_SUPPORTED` / `PipelineStatus::DEMUXER_ERROR_DETECTED_AAC`，而桌面 Chromium 可直接播放。同一字节复制为独立内存 Blob 后仍复现，排除了 ASAR range、`File.slice()` 高位偏移 backing store、Blob 字节缺失、用户激活和自动播放策略；相同字节经声明 `avc1.640028, mp4a.40.2` 的 `MediaSource` 可取得 metadata。因此将已确认的故障边界记录为 Android Chromium 普通 Blob 媒体输入路径对 fragmented MP4/AAC 的平台兼容性差异；没有 Chromium 上游问题编号前，不进一步断言具体内核提交或平台解码器缺陷。
 - 缺失的迷雾效果统一来自 `kiri2.mp4`。该文件使用普通 `ftyp/moov/mdat` MP4，无法进入只接受 `mvex/moof` 的 MSE 回退；画面是常规 H.264，附带的 AAC-LC 轨经完整解码确认全静音。Tyrano 未处理的 `video.play()` Promise 只负责暴露 `NotSupportedError`，不是自动播放策略失败。
 - Android 逐项媒体扫描进一步确认 `effect.mp4` 存在同类故障：它也是普通 `ftyp/moov/free/mdat` MP4，H.264 画面可完整解码，唯一 AAC-LC 轨的全部解码样本均为零；文件大小为 963,462 字节，SHA-256 为 `0151e07fec302ed5de5998dda6202b5120d7c0c2cc612e90c98640f04055c9bd`。
-- 对基础包和当前汉化覆盖后的最终资源做只读媒体审计：46 个 MP4 中有 40 个 fragmented MP4，其中 15 个带 AAC；现有 MSE 检查可识别全部 40 个，除 17.18 MiB 且只有 H.264 轨的 `title_main.mp4` 外均处于 16 MiB 回退上限内。`title_main.mp4` 由游戏标题循环插件自己的 MSE 路径读取，不属于普通 Blob/AAC 故障，但仍需处理未串行的 `SourceBuffer.appendBuffer()` 和大 ArrayBuffer 生命周期。
+- 对基础包和当前汉化覆盖后的最终资源做只读媒体审计：46 个 MP4 中有 40 个 fragmented MP4，其中 15 个带 AAC；现有 MSE 检查可识别全部 40 个，除 17.18 MiB 且只有 H.264 轨的 `title_main.mp4` 外均处于 16 MiB 回退上限内。`title_main.mp4` 由游戏标题循环插件自己的 MSE 路径读取，不属于普通 Blob/AAC 故障，因此修复边界限定为游戏 Profile 内的 SourceBuffer 队列，而不是 Host 媒体回退。
 - 最终资源中的 559 个独立音频均可被媒体探针解析，编码为 556 个 Vorbis 和 3 个 MP3，没有发现 AAC 同类封装；最长 BGM 解码为双声道 Float32 PCM 的理论体积约 108.6 MiB。另有 12 个压缩体积超过 16 MiB 的 APNG，单帧 RGBA 约 3.9–9.9 MiB，按现有一次建立所有帧图像的行为计算，完整帧上界约 124–347 MiB，需在真机测量实际峰值后以可选性能策略处理。
 
 ### 新增
 
+- 增加严格版本匹配的标题循环 Profile：分别串行化视频与音频 `SourceBuffer`，每次只在 `updateend` 后按固定 deadline 安排下一段，避免定时器重入触发 `InvalidStateError`；加载失败、同名实例替换和退出会取消队列与定时器、解除监听、中止在途追加、关闭 `MediaSource` 并撤销标题 Blob URL。未知本体或模组覆盖保留原资源并产生可启动警告，不全局包装 `SourceBuffer.prototype`。
 - 新增零依赖的跨平台 `npm start` 入口，继续调用带文件白名单的 `tools/static-server.js`；无需安装 npm 包或执行构建，Windows 原有 `start_server.bat` 保持可用。
 - 将游戏菜单改为保留场景背景的响应式浮动面板：桌面双栏展示会话控制与运行日志，窄屏改为单列有界滚动；新增包含 Esc、F1–F12、QWERTY、修饰键、导航区和方向键的紧凑 TKL 虚拟键盘，按键事件在游戏 iframe realm 中生成，兼容 `key/code` 与旧式 `keyCode/which`。Ctrl、Shift、Alt 与 Meta 可锁定用于组合键，菜单关闭、窗口失焦、重载和退出时统一释放。
 - Host kernel 新增有界游戏控制台监控：只捕获 iframe 主世界的 `console.warn/error`、未捕获异常和 Promise rejection，最多保留 160 条、单条最多 2400 字符且不持有原始对象引用；浮动面板按需读取快照，支持级别筛选、刷新、复制和清空，不尝试读取浏览器扩展隔离世界或 Chromium 内部日志。

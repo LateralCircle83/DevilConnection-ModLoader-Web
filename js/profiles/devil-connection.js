@@ -47,6 +47,7 @@
       DCWeb.DevilConnectionEffectVideoPatch,
       DCWeb.DevilConnectionRemodalPatch,
       DCWeb.DevilConnectionCollectionScrollPatch,
+      DCWeb.DevilConnectionTitleLoopPatch,
     ],
     parseGameTitle: parseGameTitle,
     readTitle: readTitle,

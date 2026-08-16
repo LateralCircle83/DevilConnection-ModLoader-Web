@@ -203,6 +203,7 @@ node tests\profile-runner.test.js
 node tests\session-preparer.test.js
 node tests\compatibility-controller.test.js
 node tests\collection-scroll-profile.test.js
+node tests\title-loop-profile.test.js
 node tests\debug-tools.test.js
 node tests\tyrano-preload-scheduler.test.js
 node tests\start-gate.test.js
