@@ -199,6 +199,7 @@ node tests\source-restore-controller.test.js
 node tests\profile-runner.test.js
 node tests\session-preparer.test.js
 node tests\compatibility-controller.test.js
+node tests\collection-scroll-profile.test.js
 node tests\debug-tools.test.js
 node tests\tyrano-preload-scheduler.test.js
 node tests\start-gate.test.js
@@ -230,5 +231,6 @@ Minimum browser checks:
 - Saving, refreshing, and loading does not request stale Blob URLs.
 - Reload and close release or replace session URLs at the correct time.
 - Player menu has no clipping/overflow and restores focus correctly; virtual keys emit balanced down/up events, and the console viewer remains bounded and scrollable.
+- Character and ending collection lists retain native vertical touch scrolling without disabling Tyrano's page-level gesture guard.
 
 Before any requested commit, inspect staged paths and confirm that no root game archive, unlisted ASAR, or extracted game content is included. Versioned recommended packages must be direct local entries in `recommended-mods/catalog.json`; external entries must not retain duplicate tracked binaries.
