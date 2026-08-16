@@ -4,6 +4,7 @@ const assert = require('node:assert/strict')
 
 global.window = {}
 require('../js/kernel/namespace.js')
+require('../js/kernel/console-monitor.js')
 require('../js/kernel/resource-path.js')
 require('../js/kernel/resource-rewriter.js')
 require('../js/mods/mod-config-store.js')
@@ -42,7 +43,7 @@ function createTarget(storage) {
     TextEncoder,
     Uint8Array,
     atob,
-    console,
+    console: { error() {}, log() {}, warn() {} },
     document: {
       addEventListener() {},
       documentElement: { setAttribute() {} },

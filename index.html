@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light" />
     <title>DevilConnection Modloader web</title>
     <link rel="icon" href="./favicon.ico" sizes="any" />
-    <link rel="stylesheet" href="./styles.css?v=20260816a" />
+    <link rel="stylesheet" href="./styles.css?v=20260816c" />
     <script defer src="./js/kernel/namespace.js"></script>
     <script defer src="./js/vendor/jszip.min.js"></script>
     <script defer src="./js/vendor/lz-string.min.js"></script>
@@ -28,7 +28,8 @@
     <script defer src="./js/shell/save-manager.js?v=20260813c"></script>
     <script defer src="./js/shell/save-manager-controller.js?v=20260813c"></script>
     <script defer src="./js/shell/local-source-store.js?v=20260812a"></script>
-    <script defer src="./js/kernel/browser-api.js?v=20260814a"></script>
+    <script defer src="./js/kernel/console-monitor.js?v=20260816a"></script>
+    <script defer src="./js/kernel/browser-api.js?v=20260816a"></script>
     <script defer src="./js/kernel/tyrano-save-adapter.js"></script>
     <script defer src="./js/kernel/tyrano-preload-scheduler.js?v=20260814a"></script>
     <script defer src="./js/mods/mod-runtime.js?v=20260812a"></script>
@@ -40,11 +41,12 @@
     <script defer src="./js/profiles/devil-connection.js?v=20260815c"></script>
     <script defer src="./js/kernel/game-document.js?v=20260811b"></script>
     <script defer src="./js/shell/readme-view.js?v=20260813a"></script>
-    <script defer src="./js/shell/shell-view.js?v=20260816a"></script>
+    <script defer src="./js/shell/player-runtime-controls.js?v=20260816b"></script>
+    <script defer src="./js/shell/shell-view.js?v=20260816c"></script>
     <script defer src="./js/shell/recommended-mods-controller.js?v=20260816a"></script>
     <script defer src="./js/shell/compatibility-view.js?v=20260816a"></script>
     <script defer src="./js/shell/session-preparer.js?v=20260813a"></script>
-    <script defer src="./js/shell/player-controller.js?v=20260816a"></script>
+    <script defer src="./js/shell/player-controller.js?v=20260816b"></script>
     <script defer src="./js/shell/compatibility-controller.js?v=20260816a"></script>
     <script defer src="./js/shell/app.js?v=20260815a"></script>
   </head>
@@ -509,9 +511,13 @@
       >
         <div class="player-menu-shell">
           <header class="player-menu-header">
-            <div class="player-menu-brand">
-              <span class="live-dot" aria-hidden="true"></span>
-              <span>LOCAL ASAR PLAYER</span>
+            <div class="player-menu-heading">
+              <div class="player-menu-brand">
+                <span class="live-dot" aria-hidden="true"></span>
+                <span>LOCAL ASAR PLAYER</span>
+              </div>
+              <p class="player-menu-state">游戏运行中</p>
+              <h2 id="player-menu-title">Devil Connection</h2>
             </div>
             <button
               id="close-player-menu"
@@ -524,48 +530,68 @@
           </header>
 
           <div class="player-menu-content">
-            <p class="player-menu-state">游戏运行中</p>
-            <h2 id="player-menu-title">Devil Connection</h2>
+            <section class="player-control-pane" aria-label="游戏会话控制">
+              <dl class="player-session-details">
+                <div>
+                  <dt>游戏归档</dt>
+                  <dd id="mounted-file">app.asar</dd>
+                </div>
+                <div>
+                  <dt>游戏版本</dt>
+                  <dd id="mounted-version">--</dd>
+                </div>
+                <div>
+                  <dt>文件大小</dt>
+                  <dd id="mounted-size">--</dd>
+                </div>
+                <div>
+                  <dt>启用模组</dt>
+                  <dd id="mounted-mods">0 个</dd>
+                </div>
+              </dl>
 
-            <dl class="player-session-details">
-              <div>
-                <dt>游戏归档</dt>
-                <dd id="mounted-file">app.asar</dd>
-              </div>
-              <div>
-                <dt>游戏版本</dt>
-                <dd id="mounted-version">--</dd>
-              </div>
-              <div>
-                <dt>文件大小</dt>
-                <dd id="mounted-size">--</dd>
-              </div>
-              <div>
-                <dt>资源来源</dt>
-                <dd>分层本地 ASAR</dd>
-              </div>
-              <div>
-                <dt>启用模组</dt>
-                <dd id="mounted-mods">0 个</dd>
-              </div>
-            </dl>
+              <section class="player-tool-section" aria-labelledby="virtual-keyboard-title">
+                <header class="player-tool-heading">
+                  <h3 id="virtual-keyboard-title">虚拟键盘</h3>
+                  <span>TKL INPUT</span>
+                </header>
+                <div id="virtual-keyboard" class="virtual-keyboard" role="group" aria-label="虚拟键盘"></div>
+              </section>
 
-            <div class="player-menu-actions">
-              <button id="reload-game" class="player-menu-action" type="button">
-                <span class="action-symbol" aria-hidden="true">&#8635;</span>
-                <span>
+              <div class="player-menu-actions">
+                <button id="reload-game" class="player-menu-action" type="button">
+                  <span class="action-symbol" aria-hidden="true">&#8635;</span>
                   <strong>重新载入</strong>
-                  <small>重启当前游戏会话</small>
-                </span>
-              </button>
-              <button id="close-game" class="player-menu-action is-danger" type="button">
-                <span class="action-symbol" aria-hidden="true">&#8592;</span>
-                <span>
+                </button>
+                <button id="close-game" class="player-menu-action is-danger" type="button">
+                  <span class="action-symbol" aria-hidden="true">&#8592;</span>
                   <strong>退出游戏</strong>
-                  <small>释放归档并返回选择页面</small>
-                </span>
-              </button>
-            </div>
+                </button>
+              </div>
+            </section>
+
+            <section class="player-console-pane" aria-labelledby="player-console-title">
+              <header class="player-console-header">
+                <div>
+                  <h3 id="player-console-title">运行日志</h3>
+                  <span id="player-console-summary">Warn 0 / Error 0</span>
+                </div>
+                <div class="player-console-tools">
+                  <button id="refresh-player-console" type="button" aria-label="刷新运行日志" title="刷新">&#8635;</button>
+                  <button id="copy-player-console" type="button" aria-label="复制运行日志" title="复制">&#10697;</button>
+                  <button id="clear-player-console" type="button" aria-label="清空运行日志" title="清空">&#9003;</button>
+                </div>
+              </header>
+              <div class="player-console-filters" role="group" aria-label="日志级别">
+                <button class="is-active" type="button" data-console-filter="all" aria-pressed="true">全部 <span id="player-console-count-all">0</span></button>
+                <button type="button" data-console-filter="warn" aria-pressed="false">Warn <span id="player-console-count-warn">0</span></button>
+                <button type="button" data-console-filter="error" aria-pressed="false">Error <span id="player-console-count-error">0</span></button>
+              </div>
+              <div id="player-console-list" class="player-console-list" role="log" aria-live="polite">
+                <p class="player-console-empty">暂无警告或错误</p>
+              </div>
+              <p id="player-console-copy-status" class="player-console-copy-status" aria-live="polite"></p>
+            </section>
           </div>
         </div>
       </div>

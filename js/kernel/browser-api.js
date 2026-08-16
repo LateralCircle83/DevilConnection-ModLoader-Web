@@ -6,6 +6,7 @@
   function install(target, vfs, launchToken) {
     if (target.api && target.api.__dcBrowserApi) return target.api
 
+    var consoleMonitor = DCWeb.ConsoleMonitor.install(target)
     var storage = DCWeb.BrowserSaveStore.create(target)
     var configStore = DCWeb.ModConfigStore
     var binaryDebug = { pending: 0, completed: 0, failed: 0 }
@@ -157,6 +158,17 @@
       activateAchievement: async function () {},
       triggerScreenshot: async function () {},
       log: async function () { target.console.log.apply(target.console, arguments) },
+    }
+
+    try {
+      Object.defineProperty(api, '__dcDiagnostics', {
+        configurable: false,
+        enumerable: false,
+        value: consoleMonitor,
+        writable: false,
+      })
+    } catch (error) {
+      api.__dcDiagnostics = consoleMonitor
     }
 
     target.api = api

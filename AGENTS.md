@@ -66,10 +66,10 @@ Only the latest iframe navigation may retain a pending `load` callback. Supersed
 
 The source tree has five top-level responsibility domains. Add files to the narrowest existing domain; do not recreate one-folder-per-primitive layout.
 
-- `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, decoded-image/playable-video readiness, bounded fragmented-MP4 recovery, last-resort progressive-MP4 visual recovery, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
+- `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, decoded-image/playable-video readiness, bounded fragmented-MP4 recovery, last-resort progressive-MP4 visual recovery, bounded iframe console monitoring, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
 - `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-silent-videos.js` owns the exact-version silent-track transforms, `devil-connection-remodal.js` owns the exact-version Remodal layout transform, and `devil-connection.js` owns game identity, title reading, and the patch list.
 - `js/mods/`: DCML package, ordering, hook, and configuration compatibility. Later enabled VFS layers win, but hooks execute individually in UI order.
-- `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; compatibility, save, source, recommended-mod catalog, and view modules own their corresponding manager behavior; `app.js` is composition only.
+- `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; `player-runtime-controls.js` owns whitelisted synthetic keys and diagnostics snapshot access; compatibility, save, source, recommended-mod catalog, and view modules own their corresponding manager behavior; `app.js` is composition only.
 - `js/vendor/`: third-party libraries retained without application ownership.
 
 Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, and `asset-resolver.js` owns prepared resources and URL lifetime. `resource-readiness.js` owns bounded decode/playability waits and telemetry but must not change video visibility; `media-source-fallback.js` owns strict fragmented-MP4 inspection and one-buffer append but must not create URLs or decide retry policy. `mp4-visual-fallback.js` owns range-based progressive-MP4 structure inspection and construction of an equal-length video-only Blob, but likewise must not create URLs, retry elements, or decide policy. `tyrano-preload-scheduler.js` owns only the transient bounded KAG preload queue. None may become a permanent media cache or a global fetch/XHR/Range interceptor. Adapters do not absorb game-version source transforms.
@@ -87,6 +87,8 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 - CSS files must be prepared dependency-first so nested `@import` and `url()` references never retain stale Blob URLs.
 - Values crossing into the iframe realm may require realm-local `ArrayBuffer`, `Blob`, `Response`, or event objects.
 - Any Node-like global shim used with `instanceof` must be callable. In particular, keep `ModRuntime`'s `Buffer` shim as a function; the game's OGG metadata library performs `buffer instanceof Buffer` even when no mods are enabled.
+- Console monitoring is limited to iframe-main-world `warn`, `error`, uncaught errors, and unhandled rejections. Keep at most 160 serialized entries of at most 2400 characters, retain no original argument references, preserve native console calls, and do not attempt to capture extension isolated worlds, browser internals, or Worker console output.
+- Synthetic player input is a Shell feature, not a Game Profile transform. Dispatch only declared keys using the iframe realm's `KeyboardEvent`, provide legacy `keyCode`/`which`, and release every held key on menu close, host blur, reload, exit, or teardown. Never represent these untrusted events as browser user activation.
 - The runtime must continue to support range requests used by media loaders.
 - Never globally hide managed images for readiness. The Tyrano adapter may delay the stable `image` tag boundary until its source preload and `decode()` complete, but the original tag must retain ownership of node insertion, `display`, `visibility`, `opacity`, transition timing, waits, and scenario progression. Video readiness may delay an existing preload callback and publish telemetry, but must not change visual state; the game's own `movie_with_bg` timing remains authoritative.
 - If a managed MP4/M4V fails with `MEDIA_ERR_SRC_NOT_SUPPORTED`, Browser Runtime may request one bounded `MediaSource` representation from `AssetResolver` and retry that element once. The fallback must require `ftyp/moov/mvex/moof`, derive AVC/AAC codecs from `avcC/esds`, pass `MediaSource.isTypeSupported()`, stay at or below 16 MiB, time out append after 15 seconds, and release its `SourceBuffer`, `MediaSource`, bytes, and transient URL on source change or session release.
@@ -169,7 +171,7 @@ The compatibility manager page is an observer, not an executor. It displays the 
 - The compatibility page must describe required transforms without presenting disable controls. A `warn-and-continue` result selects that page, displays that the transform was not executed, and keeps Start available after the normal iframe readiness handshake. An `abort-session` failure still opens the page and leaves Start disabled.
 - The top-left player menu trigger must remain keyboard accessible and visible against arbitrary game scenes.
 - The Mods page keeps local load-order management and recommended downloads as two keyboard-accessible modes inside the existing page. The mobile switch remains two equal columns; recommended items and download commands must not overflow narrow viewports.
-- The full-screen menu must retain Escape/close behavior, focus containment, focus restoration, and mobile single-column layout.
+- The floating player menu must retain backdrop/Escape/close behavior, focus containment, focus restoration, bounded desktop sizing, and mobile single-column scrolling without becoming an opaque full-viewport page.
 - Keep fixed controls stable in size and account for safe-area insets.
 - Do not expose implementation instructions or debug descriptions as normal in-app copy.
 
@@ -201,6 +203,9 @@ node tests\debug-tools.test.js
 node tests\tyrano-preload-scheduler.test.js
 node tests\start-gate.test.js
 node tests\player-controller.test.js
+node tests\console-monitor.test.js
+node tests\player-runtime-controls.test.js
+node tests\player-tools-view.test.js
 Get-ChildItem js -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
 git diff --check
 git status --short
@@ -224,6 +229,6 @@ Minimum browser checks:
 - Tyrano `image` tags begin their original insertion and transition only after preload/decode, without a global image visibility rule. Video readiness does not override game visibility. A code-4 failure first tries supported fragmented MP4 through MSE; an eligible progressive H.264/AAC resource may then retry once without audio and must warn. Exact `kiri2.mp4` and `effect.mp4` profile transforms expose their unchanged H.264 pictures without waiting for a first failure.
 - Saving, refreshing, and loading does not request stale Blob URLs.
 - Reload and close release or replace session URLs at the correct time.
-- Player menu has no clipping/overflow and restores focus correctly.
+- Player menu has no clipping/overflow and restores focus correctly; virtual keys emit balanced down/up events, and the console viewer remains bounded and scrollable.
 
 Before any requested commit, inspect staged paths and confirm that no root game archive, unlisted ASAR, or extracted game content is included. Versioned recommended packages must be direct local entries in `recommended-mods/catalog.json`; external entries must not retain duplicate tracked binaries.

@@ -14,6 +14,7 @@ global.window = {
   },
 }
 require('../js/kernel/namespace.js')
+require('../js/shell/player-runtime-controls.js')
 require('../js/shell/player-controller.js')
 
 function createView() {

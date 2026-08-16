@@ -1635,21 +1635,22 @@ p {
   position: absolute;
   z-index: 10;
   top: max(12px, env(safe-area-inset-top));
-  left: max(12px, env(safe-area-inset-left));
+  left: env(safe-area-inset-left);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  width: 44px;
-  height: 44px;
+  gap: 3px;
+  width: 32px;
+  height: 40px;
   padding: 0;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 5px;
-  color: #f4f6f5;
-  background: rgba(17, 20, 17, 0.72);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-left: 0;
+  border-radius: 0 5px 5px 0;
+  color: rgba(244, 246, 245, 0.72);
+  background: rgba(17, 20, 17, 0.46);
+  box-shadow: 2px 4px 12px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(6px);
   cursor: pointer;
   transition:
     background 150ms ease,
@@ -1657,35 +1658,45 @@ p {
     transform 150ms ease;
 }
 
+.player-menu-trigger::before {
+  position: absolute;
+  inset: -2px -12px -2px 0;
+  content: "";
+}
+
 .player-menu-trigger span {
   display: block;
-  width: 18px;
+  width: 14px;
   height: 2px;
   border-radius: 1px;
   background: currentColor;
 }
 
 .player-menu-trigger:hover,
-.player-menu-trigger:focus-visible {
+.player-menu-trigger:focus-visible,
+.player-menu-trigger[aria-expanded="true"] {
   border-color: rgba(255, 255, 255, 0.66);
+  border-left: 0;
+  color: #f4f6f5;
   background: rgba(17, 20, 17, 0.9);
   outline: none;
-  transform: translateY(-1px);
 }
 
 .player-menu {
   position: absolute;
   z-index: 20;
   inset: 0;
-  overflow: auto;
+  display: grid;
+  overflow: hidden;
   padding:
-    max(20px, env(safe-area-inset-top))
-    max(20px, env(safe-area-inset-right))
-    max(20px, env(safe-area-inset-bottom))
-    max(20px, env(safe-area-inset-left));
+    max(14px, env(safe-area-inset-top))
+    max(14px, env(safe-area-inset-right))
+    max(14px, env(safe-area-inset-bottom))
+    max(14px, env(safe-area-inset-left));
+  place-items: center;
   color: #eef2ef;
-  background: rgba(14, 17, 15, 0.96);
-  backdrop-filter: blur(14px);
+  background: rgba(5, 7, 6, 0.46);
+  backdrop-filter: blur(4px);
 }
 
 .player-menu[hidden] {
@@ -1695,9 +1706,14 @@ p {
 .player-menu-shell {
   display: flex;
   flex-direction: column;
-  width: min(760px, 100%);
-  min-height: 100%;
-  margin: 0 auto;
+  width: min(1180px, 100%);
+  height: min(700px, 100%);
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #4a524c;
+  border-radius: 6px;
+  background: #171b18;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
 }
 
 .player-menu-header {
@@ -1705,8 +1721,12 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding-bottom: 18px;
+  padding: 14px 16px;
   border-bottom: 1px solid #3b423d;
+}
+
+.player-menu-heading {
+  min-width: 0;
 }
 
 .player-menu-brand {
@@ -1728,8 +1748,8 @@ p {
 
 .player-menu-close {
   flex: none;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   border: 1px solid #515a54;
   border-radius: 5px;
@@ -1748,68 +1768,195 @@ p {
 }
 
 .player-menu-content {
-  display: flex;
+  display: grid;
   flex: 1;
-  flex-direction: column;
-  justify-content: center;
-  padding: 44px 0;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .player-menu-state {
-  margin: 0 0 10px;
+  margin: 7px 0 2px;
   color: #69d99b;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
 }
 
-.player-menu-content h2 {
-  margin: 0 0 34px;
+.player-menu-heading h2 {
+  max-width: min(560px, 72vw);
+  margin: 0;
+  overflow: hidden;
   color: #ffffff;
-  font-size: 36px;
-  line-height: 1.15;
+  font-size: 20px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-control-pane {
+  display: flex;
+  min-height: 0;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 20px;
+  padding: 18px;
+  border-right: 1px solid #3b423d;
 }
 
 .player-session-details {
-  margin: 0 0 38px;
+  margin: 0;
   border-top: 1px solid #3b423d;
 }
 
 .player-session-details div {
   display: grid;
-  grid-template-columns: minmax(110px, 0.32fr) minmax(0, 1fr);
-  gap: 24px;
-  padding: 14px 0;
+  grid-template-columns: minmax(82px, 0.38fr) minmax(0, 1fr);
+  gap: 14px;
+  padding: 9px 0;
   border-bottom: 1px solid #3b423d;
 }
 
 .player-session-details dt {
   color: #8f9b93;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .player-session-details dd {
   min-width: 0;
   margin: 0;
   color: #f1f4f2;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 650;
   overflow-wrap: anywhere;
   text-align: right;
 }
 
+.player-tool-section {
+  padding-top: 2px;
+}
+
+.player-tool-heading,
+.player-console-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.player-tool-heading {
+  margin-bottom: 12px;
+}
+
+.player-tool-heading h3,
+.player-console-header h3 {
+  margin: 0;
+  color: #f6f8f6;
+  font-size: 14px;
+}
+
+.player-tool-heading > span,
+.player-console-header > div > span {
+  color: #869189;
+  font: 700 10px/1.2 Consolas, monospace;
+}
+
+.virtual-keyboard {
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 7px;
+  overscroll-behavior-x: contain;
+  scrollbar-color: #59635c #171b18;
+  scrollbar-width: thin;
+}
+
+.virtual-keyboard::-webkit-scrollbar {
+  height: 6px;
+}
+
+.virtual-keyboard::-webkit-scrollbar-thumb {
+  background: #59635c;
+}
+
+.virtual-keyboard::-webkit-scrollbar-track {
+  background: #171b18;
+}
+
+.virtual-keyboard-layout {
+  display: grid;
+  width: max-content;
+  gap: 4px;
+}
+
+.virtual-key-row {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 4px;
+}
+
+.virtual-key-row.is-function-row {
+  margin-bottom: 4px;
+}
+
+.virtual-key {
+  display: grid;
+  flex: 0 0 var(--virtual-key-width);
+  width: var(--virtual-key-width);
+  height: 34px;
+  min-width: var(--virtual-key-width);
+  padding: 0 4px;
+  place-items: center;
+  border: 1px solid #59635c;
+  border-radius: 4px;
+  color: #f1f5f2;
+  background: #252b27;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.22);
+  cursor: pointer;
+  font: 700 10px/1 Consolas, monospace;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.virtual-key-spacer {
+  flex: 0 0 var(--virtual-key-width);
+  width: var(--virtual-key-width);
+  height: 34px;
+}
+
+.virtual-key.has-gap-before,
+.virtual-key-spacer.has-gap-before {
+  margin-left: 8px;
+}
+
+.virtual-key:hover,
+.virtual-key:focus-visible {
+  border-color: #93a199;
+  background: #303732;
+  outline: none;
+}
+
+.virtual-key[aria-pressed="true"] {
+  border-color: #69d99b;
+  color: #ffffff;
+  background: #24543a;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+  transform: translateY(1px);
+}
+
 .player-menu-actions {
   display: grid;
+  margin-top: auto;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .player-menu-action {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
-  gap: 14px;
-  min-height: 76px;
-  padding: 14px 16px;
+  gap: 10px;
+  min-height: 52px;
+  padding: 9px 11px;
   border: 1px solid #505952;
   border-radius: 6px;
   color: #f4f6f5;
@@ -1834,28 +1981,155 @@ p {
 .player-menu-action .action-symbol {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 30px;
+  height: 30px;
   border: 1px solid #59625c;
   border-radius: 50%;
-  font-size: 21px;
-}
-
-.player-menu-action strong,
-.player-menu-action small {
-  display: block;
-  letter-spacing: 0;
+  font-size: 17px;
 }
 
 .player-menu-action strong {
+  display: block;
+  letter-spacing: 0;
   font-size: 14px;
 }
 
-.player-menu-action small {
-  margin-top: 4px;
-  color: #9da7a0;
-  font-size: 12px;
-  font-weight: 400;
+.player-console-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: #101311;
+}
+
+.player-console-header {
+  padding: 16px 18px 13px;
+  border-bottom: 1px solid #343a36;
+}
+
+.player-console-header > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.player-console-tools {
+  display: flex;
+  flex: none;
+  gap: 5px;
+}
+
+.player-console-tools button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #465049;
+  border-radius: 4px;
+  color: #dce3de;
+  background: #202521;
+  cursor: pointer;
+  font-size: 17px;
+}
+
+.player-console-tools button:hover,
+.player-console-tools button:focus-visible {
+  border-color: #89968e;
+  background: #2b312d;
+  outline: none;
+}
+
+.player-console-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-bottom: 1px solid #343a36;
+}
+
+.player-console-filters button {
+  min-height: 38px;
+  padding: 0 10px;
+  border: 0;
+  border-right: 1px solid #343a36;
+  color: #8f9a92;
+  background: transparent;
+  cursor: pointer;
+  font: 700 11px/1.2 Consolas, monospace;
+}
+
+.player-console-filters button:last-child {
+  border-right: 0;
+}
+
+.player-console-filters button:hover,
+.player-console-filters button:focus-visible,
+.player-console-filters button.is-active {
+  color: #f1f5f2;
+  background: #202521;
+  outline: none;
+}
+
+.player-console-filters span {
+  margin-left: 4px;
+  color: #69d99b;
+}
+
+.player-console-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+  overscroll-behavior: contain;
+  font: 11px/1.5 Consolas, monospace;
+}
+
+.player-console-empty {
+  display: grid;
+  min-height: 100%;
+  margin: 0;
+  place-items: center;
+  color: #748078;
+}
+
+.player-console-entry {
+  padding: 9px 2px 10px;
+  border-bottom: 1px solid #2e342f;
+}
+
+.player-console-entry header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+  color: #7f8a82;
+}
+
+.player-console-level {
+  min-width: 43px;
+  color: #f2c46d;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.player-console-entry.is-error .player-console-level {
+  color: #ef8c8c;
+}
+
+.player-console-source {
+  margin-left: auto;
+}
+
+.player-console-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #d9dfdb;
+  white-space: pre-wrap;
+}
+
+.player-console-copy-status {
+  min-height: 27px;
+  margin: 0;
+  padding: 6px 12px;
+  border-top: 1px solid #343a36;
+  color: #94a098;
+  font-size: 11px;
 }
 
 #game-frame {
@@ -2115,36 +2389,45 @@ p {
 
   .player-menu {
     padding:
-      max(14px, env(safe-area-inset-top))
-      max(14px, env(safe-area-inset-right))
-      max(14px, env(safe-area-inset-bottom))
-      max(14px, env(safe-area-inset-left));
+      max(8px, env(safe-area-inset-top))
+      max(8px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom))
+      max(8px, env(safe-area-inset-left));
+    place-items: end center;
+  }
+
+  .player-menu-shell {
+    width: 100%;
+    height: min(760px, 100%);
   }
 
   .player-menu-content {
-    justify-content: flex-start;
-    padding: 34px 0 20px;
+    display: block;
+    overflow-y: auto;
   }
 
-  .player-menu-content h2 {
-    margin-bottom: 26px;
-    font-size: 28px;
+  .player-menu-header {
+    padding: 10px 12px;
   }
 
-  .player-session-details {
-    margin-bottom: 28px;
+  .player-menu-heading h2 {
+    max-width: 68vw;
+    font-size: 17px;
   }
 
-  .player-session-details div {
-    grid-template-columns: 1fr;
-    gap: 6px;
+  .player-control-pane {
+    overflow: visible;
+    padding: 14px;
+    border-right: 0;
+    border-bottom: 1px solid #3b423d;
   }
 
-  .player-session-details dd {
-    text-align: left;
+  .player-console-pane {
+    min-height: 340px;
   }
 
-  .player-menu-actions {
-    grid-template-columns: 1fr;
+  .player-console-list {
+    min-height: 230px;
+    max-height: 320px;
   }
 }

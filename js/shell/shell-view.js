@@ -11,6 +11,15 @@
     return value.toFixed(unit > 1 ? 2 : 0) + ' ' + units[unit]
   }
 
+  function formatConsoleTime(value) {
+    if (!value) return '--:--:--'
+    var date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '--:--:--'
+    return [date.getHours(), date.getMinutes(), date.getSeconds()].map(function (part) {
+      return String(part).padStart(2, '0')
+    }).join(':')
+  }
+
   function createElement(doc, tag, className, text) {
     var element = doc.createElement(tag)
     if (className) element.className = className
@@ -77,6 +86,17 @@
     this.menu = doc.getElementById('player-menu')
     this.menuButton = doc.getElementById('open-player-menu')
     this.menuCloseButton = doc.getElementById('close-player-menu')
+    this.virtualKeyboard = doc.getElementById('virtual-keyboard')
+    this.playerConsoleList = doc.getElementById('player-console-list')
+    this.playerConsoleSummary = doc.getElementById('player-console-summary')
+    this.playerConsoleCountAll = doc.getElementById('player-console-count-all')
+    this.playerConsoleCountWarn = doc.getElementById('player-console-count-warn')
+    this.playerConsoleCountError = doc.getElementById('player-console-count-error')
+    this.playerConsoleFilters = Array.prototype.slice.call(doc.querySelectorAll('[data-console-filter]'))
+    this.playerConsoleRefreshButton = doc.getElementById('refresh-player-console')
+    this.playerConsoleCopyButton = doc.getElementById('copy-player-console')
+    this.playerConsoleClearButton = doc.getElementById('clear-player-console')
+    this.playerConsoleCopyStatus = doc.getElementById('player-console-copy-status')
     this.mountedFile = doc.getElementById('mounted-file')
     this.mountedSize = doc.getElementById('mounted-size')
     this.mountedVersion = doc.getElementById('mounted-version')
@@ -86,15 +106,59 @@
     this.launchReady = false
     this.busy = false
     this.menuReturnFocus = null
+    this.playerConsoleFilter = 'all'
+    this.playerConsoleSnapshot = { available: false, counts: { error: 0, warn: 0 }, entries: [], limit: 0 }
     this.configReturnFocus = null
     this.configModId = ''
     this.confirmReturnFocus = null
     this.confirmResolver = null
     this.pendingFrameLoad = null
+    if (DCWeb.PlayerRuntimeControls && typeof DCWeb.PlayerRuntimeControls.keyboardLayout === 'function') {
+      this.renderVirtualKeyboard(DCWeb.PlayerRuntimeControls.keyboardLayout())
+    }
+  }
+
+  ShellView.prototype.renderVirtualKeyboard = function (layout) {
+    this.virtualKeyboard.replaceChildren()
+    var surface = createElement(this.doc, 'div', 'virtual-keyboard-layout')
+    ;(layout || []).forEach(function (items, rowIndex) {
+      var row = createElement(this.doc, 'div', 'virtual-key-row' + (rowIndex === 0 ? ' is-function-row' : ''))
+      items.forEach(function (item) {
+        var width = Math.round(item.units * 34 + Math.max(0, item.units - 1) * 4)
+        if (item.spacer) {
+          var space = createElement(this.doc, 'span', 'virtual-key-spacer' + (item.gapBefore ? ' has-gap-before' : ''))
+          space.style.setProperty('--virtual-key-width', width + 'px')
+          row.append(space)
+          return
+        }
+        var button = createElement(this.doc, 'button', 'virtual-key' + (item.modifier ? ' is-modifier' : '') + (item.gapBefore ? ' has-gap-before' : ''), item.label)
+        button.type = 'button'
+        button.dataset.virtualKey = item.id
+        if (item.modifier) button.dataset.virtualModifier = 'true'
+        button.setAttribute('aria-label', item.label)
+        button.setAttribute('aria-pressed', 'false')
+        button.style.setProperty('--virtual-key-width', width + 'px')
+        row.append(button)
+      }, this)
+      surface.append(row)
+    }, this)
+    this.virtualKeyboard.append(surface)
   }
 
   ShellView.prototype.bind = function (handlers) {
     var view = this
+    function releaseVirtualKeys() {
+      view.virtualKeyboard.querySelectorAll('[data-virtual-key]').forEach(function (button) {
+        button.setAttribute('aria-pressed', 'false')
+        delete button.dataset.pointerActive
+        delete button.dataset.suppressClickUntil
+      })
+      handlers.releaseVirtualKeys()
+    }
+    function closePlayerMenu(restoreFocus) {
+      releaseVirtualKeys()
+      view.closeMenu(restoreFocus)
+    }
     this.loadCoreButton.addEventListener('click', function () {
       if (!handlers.isBusy()) handlers.selectCore()
     })
@@ -162,19 +226,72 @@
       if (event.target === view.configDialog) view.closeModConfig()
     })
 
-    this.menuButton.addEventListener('click', function () { view.openMenu() })
-    this.menuCloseButton.addEventListener('click', function () { view.closeMenu() })
+    this.menuButton.addEventListener('click', function () {
+      view.openMenu()
+      handlers.refreshPlayerDiagnostics()
+    })
+    this.menuCloseButton.addEventListener('click', function () { closePlayerMenu() })
     this.menu.addEventListener('click', function (event) {
-      if (event.target === view.menu) view.closeMenu()
+      if (event.target === view.menu) closePlayerMenu()
     })
     this.closeButton.addEventListener('click', function () {
-      view.closeMenu(false)
+      closePlayerMenu(false)
       handlers.close()
     })
     this.reloadButton.addEventListener('click', function () {
-      view.closeMenu()
+      closePlayerMenu()
       handlers.reload()
     })
+    this.virtualKeyboard.addEventListener('pointerdown', function (event) {
+      var button = event.target.closest('[data-virtual-key]')
+      if (!button || button.dataset.pointerActive === 'true') return
+      if (button.dataset.virtualModifier === 'true') return
+      if (event.pointerType === 'touch') return
+      event.preventDefault()
+      button.dataset.pointerActive = 'true'
+      button.dataset.suppressClickUntil = String(Date.now() + 700)
+      button.setAttribute('aria-pressed', 'true')
+      if (button.setPointerCapture && event.pointerId !== undefined) {
+        try { button.setPointerCapture(event.pointerId) } catch (error) {}
+      }
+      handlers.virtualKeyDown(button.dataset.virtualKey)
+    })
+    ;['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (eventName) {
+      view.virtualKeyboard.addEventListener(eventName, function (event) {
+        var button = event.target.closest('[data-virtual-key]')
+        if (!button || button.dataset.pointerActive !== 'true') return
+        event.preventDefault()
+        delete button.dataset.pointerActive
+        button.setAttribute('aria-pressed', 'false')
+        handlers.virtualKeyUp(button.dataset.virtualKey)
+      })
+    })
+    this.virtualKeyboard.addEventListener('click', function (event) {
+      var button = event.target.closest('[data-virtual-key]')
+      if (!button) return
+      if (button.dataset.virtualModifier === 'true') {
+        var pressed = button.getAttribute('aria-pressed') === 'true'
+        button.setAttribute('aria-pressed', String(!pressed))
+        if (pressed) handlers.virtualKeyUp(button.dataset.virtualKey)
+        else handlers.virtualKeyDown(button.dataset.virtualKey)
+        return
+      }
+      var suppressUntil = Number(button.dataset.suppressClickUntil) || 0
+      delete button.dataset.suppressClickUntil
+      if (Date.now() <= suppressUntil) {
+        return
+      }
+      handlers.virtualKeyTap(button.dataset.virtualKey)
+    })
+    this.playerConsoleFilters.forEach(function (button) {
+      button.addEventListener('click', function () {
+        view.playerConsoleFilter = button.dataset.consoleFilter
+        view.renderPlayerConsole(view.playerConsoleSnapshot)
+      })
+    })
+    this.playerConsoleRefreshButton.addEventListener('click', function () { handlers.refreshPlayerDiagnostics() })
+    this.playerConsoleClearButton.addEventListener('click', function () { handlers.clearPlayerDiagnostics() })
+    this.playerConsoleCopyButton.addEventListener('click', function () { view.copyPlayerConsole() })
     this.menu.ownerDocument.addEventListener('keydown', function (event) {
       if (!view.confirmDialog.hidden) {
         if (event.key === 'Escape') {
@@ -197,7 +314,7 @@
       if (view.menu.hidden) return
       if (event.key === 'Escape') {
         event.preventDefault()
-        view.closeMenu()
+        closePlayerMenu()
         return
       }
       if (event.key !== 'Tab') return
@@ -245,6 +362,73 @@
       this.menuReturnFocus.focus()
     }
     this.menuReturnFocus = null
+  }
+
+  ShellView.prototype.filteredPlayerConsoleEntries = function () {
+    var filter = this.playerConsoleFilter
+    return (this.playerConsoleSnapshot.entries || []).filter(function (entry) {
+      return filter === 'all' || entry.level === filter
+    })
+  }
+
+  ShellView.prototype.renderPlayerConsole = function (snapshot) {
+    var value = snapshot || { available: false, counts: { error: 0, warn: 0 }, entries: [], limit: 0 }
+    var counts = value.counts || { error: 0, warn: 0 }
+    this.playerConsoleSnapshot = value
+    this.playerConsoleCountWarn.textContent = String(counts.warn || 0)
+    this.playerConsoleCountError.textContent = String(counts.error || 0)
+    this.playerConsoleCountAll.textContent = String((counts.warn || 0) + (counts.error || 0))
+    this.playerConsoleSummary.textContent = 'Warn ' + (counts.warn || 0) + ' / Error ' + (counts.error || 0)
+    this.playerConsoleFilters.forEach(function (button) {
+      var active = button.dataset.consoleFilter === this.playerConsoleFilter
+      button.classList.toggle('is-active', active)
+      button.setAttribute('aria-pressed', String(active))
+    }, this)
+
+    this.playerConsoleList.replaceChildren()
+    var entries = this.filteredPlayerConsoleEntries()
+    if (!value.available || !entries.length) {
+      this.playerConsoleList.append(createElement(
+        this.doc,
+        'p',
+        'player-console-empty',
+        value.available ? '暂无警告或错误' : '日志监控尚未就绪',
+      ))
+      return
+    }
+
+    entries.forEach(function (entry) {
+      var row = createElement(this.doc, 'article', 'player-console-entry is-' + entry.level)
+      var header = createElement(this.doc, 'header')
+      header.append(createElement(this.doc, 'span', 'player-console-level', entry.level))
+      header.append(createElement(this.doc, 'time', '', formatConsoleTime(entry.time)))
+      header.append(createElement(this.doc, 'span', 'player-console-source', entry.source))
+      row.append(header)
+      row.append(createElement(this.doc, 'pre', 'player-console-message', entry.message))
+      this.playerConsoleList.append(row)
+    }, this)
+  }
+
+  ShellView.prototype.copyPlayerConsole = function () {
+    var entries = this.filteredPlayerConsoleEntries()
+    if (!entries.length) {
+      this.playerConsoleCopyStatus.textContent = '没有可复制的日志'
+      return
+    }
+    var text = entries.map(function (entry) {
+      return '[' + formatConsoleTime(entry.time) + '] ' + entry.level.toUpperCase() + ' ' + entry.source + '\n' + entry.message
+    }).join('\n\n')
+    var clipboard = this.doc.defaultView && this.doc.defaultView.navigator && this.doc.defaultView.navigator.clipboard
+    if (!clipboard || typeof clipboard.writeText !== 'function') {
+      this.playerConsoleCopyStatus.textContent = '当前浏览器不允许复制'
+      return
+    }
+    var view = this
+    Promise.resolve(clipboard.writeText(text)).then(function () {
+      view.playerConsoleCopyStatus.textContent = '已复制当前筛选结果'
+    }, function () {
+      view.playerConsoleCopyStatus.textContent = '复制失败'
+    })
   }
 
   ShellView.prototype.showPage = function (pageName) {

@@ -32,18 +32,22 @@
     this.compatibilityListeners = []
     this.reloadGeneration = 0
     this.pendingReleaseSessions = new Set()
+    this.runtimeControls = DCWeb.PlayerRuntimeControls ? new DCWeb.PlayerRuntimeControls(view.frame) : null
   }
 
   PlayerController.prototype.bind = function () {
     var controller = this
     this.view.bind({
       addMods: function (files) { controller.addMods(files) },
+      clearPlayerDiagnostics: function () { controller.clearPlayerDiagnostics() },
       close: function () { controller.close() },
       configureMod: function (id) { controller.configureMod(id) },
       isBusy: function () { return controller.busy },
       loadCore: function (file) { controller.loadCore(file) },
       moveMod: function (id, delta) { controller.moveMod(id, delta) },
       reload: function () { controller.reload() },
+      refreshPlayerDiagnostics: function () { controller.refreshPlayerDiagnostics() },
+      releaseVirtualKeys: function () { controller.releaseVirtualKeys() },
       removeMod: function (id) { controller.removeMod(id) },
       restoreSources: function (requestAccess) { controller.restoreSources(requestAccess) },
       saveModConfig: function (id, value) { controller.saveModConfig(id, value) },
@@ -51,6 +55,9 @@
       selectMods: function () { controller.selectMods() },
       start: function () { controller.start() },
       toggleMod: function (id, enabled) { controller.toggleMod(id, enabled) },
+      virtualKeyDown: function (id) { controller.virtualKeyDown(id) },
+      virtualKeyTap: function (id) { controller.virtualKeyTap(id) },
+      virtualKeyUp: function (id) { controller.virtualKeyUp(id) },
     })
     this.syncMods()
 
@@ -69,15 +76,49 @@
       }
     })
     global.addEventListener('beforeunload', function () {
+      controller.releaseVirtualKeys()
       controller.queueSessionRelease(controller.preparedSession)
       controller.queueSessionRelease(controller.activeSession)
       controller.releasePendingSessions()
     })
+    global.addEventListener('blur', function () { controller.releaseVirtualKeys() })
   }
 
   PlayerController.prototype.setBusy = function (value) {
     this.busy = value
     this.view.setBusy(value)
+  }
+
+  PlayerController.prototype.refreshPlayerDiagnostics = function () {
+    var snapshot = this.activeSession && this.runtimeControls
+      ? this.runtimeControls.readDiagnostics()
+      : { available: false, counts: { error: 0, warn: 0 }, entries: [], limit: 0 }
+    if (this.view.renderPlayerConsole) this.view.renderPlayerConsole(snapshot)
+    return snapshot
+  }
+
+  PlayerController.prototype.clearPlayerDiagnostics = function () {
+    var snapshot = this.activeSession && this.runtimeControls
+      ? this.runtimeControls.clearDiagnostics()
+      : { available: false, counts: { error: 0, warn: 0 }, entries: [], limit: 0 }
+    if (this.view.renderPlayerConsole) this.view.renderPlayerConsole(snapshot)
+    return snapshot
+  }
+
+  PlayerController.prototype.virtualKeyDown = function (id) {
+    return Boolean(this.activeSession && this.runtimeControls && this.runtimeControls.keyDown(id))
+  }
+
+  PlayerController.prototype.virtualKeyUp = function (id) {
+    return Boolean(this.activeSession && this.runtimeControls && this.runtimeControls.keyUp(id))
+  }
+
+  PlayerController.prototype.virtualKeyTap = function (id) {
+    return Boolean(this.activeSession && this.runtimeControls && this.runtimeControls.tapKey(id))
+  }
+
+  PlayerController.prototype.releaseVirtualKeys = function () {
+    if (this.runtimeControls) this.runtimeControls.releaseAll()
   }
 
   PlayerController.prototype.onCompatibilityChange = function (listener) {
@@ -527,6 +568,7 @@
     this.activeSession = session
     this.view.setLaunchReady(false)
     this.view.showPlayer(session.baseGame.file, session.baseGame.packageJson.version, session.modPlan.metadata.length, session.gameTitle)
+    this.refreshPlayerDiagnostics()
     this.startFrame(session)
   }
 
@@ -567,6 +609,7 @@
 
   PlayerController.prototype.close = function () {
     if (!this.activeSession) return
+    this.releaseVirtualKeys()
     var controller = this
     var previous = this.activeSession
     this.reloadGeneration++
@@ -584,6 +627,7 @@
   PlayerController.prototype.reload = function () {
     var session = this.activeSession
     if (!session) return
+    this.releaseVirtualKeys()
     var controller = this
     var view = this.view
     var generation = ++this.reloadGeneration
