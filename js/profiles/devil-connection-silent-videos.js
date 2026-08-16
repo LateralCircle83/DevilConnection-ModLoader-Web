@@ -81,7 +81,7 @@
   function createPatch(options) {
     return {
       description: options.description,
-      failure: 'abort-session',
+      failure: 'warn-and-continue',
       format: 'binary',
       id: options.id,
       maxBytes: MAX_BYTES,

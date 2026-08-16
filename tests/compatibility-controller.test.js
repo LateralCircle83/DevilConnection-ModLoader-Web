@@ -22,18 +22,21 @@ const controller = new window.DCWeb.CompatibilityController(shellView, view, { i
 controller.bind()
 controller.checking({ gameVersion: '1.0.0' })
 controller.ready({ patches: [], status: 'ready' }, { gameVersion: '1.0.0' })
+controller.ready({ patches: [{ status: 'unverified' }], status: 'warning' }, { gameVersion: '1.1.0' })
 controller.failed({ compatibility: { patches: [], status: 'failed' } }, { gameVersion: '2.0.0' })
 view.handlers.exportReport()
 
-assert.deepEqual(events.slice(0, 4), [
+assert.deepEqual(events.slice(0, 7), [
   ['render', 'idle', ''],
   ['render', 'checking', '1.0.0'],
   ['render', 'ready', '1.0.0'],
+  ['render', 'warning', '1.1.0'],
+  ['page', 'compatibility'],
   ['render', 'failed', '2.0.0'],
+  ['page', 'compatibility'],
 ])
-assert.deepEqual(events[4], ['page', 'compatibility'])
-assert.equal(events[5][0], 'download')
-assert.equal(events[5][1], 'devil-connection-compatibility.json')
-assert.equal(events[5][2].schemaVersion, 1)
-assert.equal(events[5][2].context.gameVersion, '2.0.0')
+assert.equal(events[7][0], 'download')
+assert.equal(events[7][1], 'devil-connection-compatibility.json')
+assert.equal(events[7][2].schemaVersion, 1)
+assert.equal(events[7][2].context.gameVersion, '2.0.0')
 console.log('Compatibility controller tests passed')

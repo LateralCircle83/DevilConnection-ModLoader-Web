@@ -29,6 +29,7 @@
     this.context = context || this.context
     this.report = report
     this.view.render(report, this.context)
+    if (report && report.status === 'warning') this.shellView.showPage('compatibility')
   }
 
   CompatibilityController.prototype.failed = function (error, context) {

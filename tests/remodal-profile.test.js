@@ -299,23 +299,21 @@ async function testStrictProfileTransform() {
   assert.equal(prepared.mime, 'text/html;charset=utf-8')
   assert.match(prepared.text, /id="dc-profile-remodal-scaler"/)
 
-  await assert.rejects(
-    window.DCWeb.ProfileRunner.run({ id: 'unsupported', patches: [patch] }, {
-      resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
-      readText() { return Promise.resolve(supportedIndex().replace('data-remodal-id="modal"', 'data-remodal-id="custom"')) },
-    }),
-    function (error) {
-      assert.equal(error.name, 'ProfileCompatibilityError')
-      assert.equal(error.compatibility.patches[0].status, 'unsupported')
-      return /预期 1 处，实际 0 处/.test(error.message)
-    },
-  )
+  const warning = await window.DCWeb.ProfileRunner.run({ id: 'unsupported', patches: [patch] }, {
+    resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
+    readText() { return Promise.resolve(supportedIndex().replace('data-remodal-id="modal"', 'data-remodal-id="custom"')) },
+  })
+  assert.equal(warning.status, 'warning')
+  assert.equal(warning.launchAllowed, true)
+  assert.equal(warning.patches[0].status, 'unverified')
+  assert.match(warning.patches[0].message, /预期 1 处，实际 0 处/)
 }
 
 async function main() {
   assert.equal(patch.id, 'devil-connection-remodal-browser-scale')
   assert.equal(patch.target, 'index.html')
   assert.equal(patch.required, true)
+  assert.equal(patch.failure, 'warn-and-continue')
   testOpenRefreshCloseLifecycle()
   testDesignWidthMatchesGameCoordinateScale()
   testInstallIsIdempotentAndPageHideCleansUp()

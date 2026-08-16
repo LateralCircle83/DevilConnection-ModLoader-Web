@@ -296,7 +296,11 @@
     if (prepared && prepared.launchId === launchId) {
       prepared.ready = true
       this.view.setProgress(100, '已就绪')
-      this.view.setStatus('启动环境已就绪，可以开始游戏', 'ready')
+      var hasCompatibilityWarning = prepared.compatibility && prepared.compatibility.status === 'warning'
+      this.view.setStatus(
+        hasCompatibilityWarning ? '部分兼容补丁未应用，仍可尝试开始游戏' : '启动环境已就绪，可以开始游戏',
+        hasCompatibilityWarning ? 'warning' : 'ready',
+      )
       this.view.setLaunchReady(true)
       return
     }

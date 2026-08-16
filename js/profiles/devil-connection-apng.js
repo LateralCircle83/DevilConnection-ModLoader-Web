@@ -32,7 +32,7 @@
 
   DCWeb.DevilConnectionApngPatch = {
     description: '修正 APNG 二进制输入、空解码结果与空帧播放行为。',
-    failure: 'abort-session',
+    failure: 'warn-and-continue',
     id: 'devil-connection-apng-browser-compat',
     name: 'APNG 浏览器兼容',
     required: true,

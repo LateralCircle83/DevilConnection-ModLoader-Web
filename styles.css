@@ -198,6 +198,10 @@ button {
   color: #9d2d2d;
 }
 
+.status-copy[data-state="warning"] {
+  color: #85610f;
+}
+
 .privacy-state {
   flex: none;
   padding: 5px 8px;
@@ -717,6 +721,10 @@ p {
   color: #77683c;
 }
 
+.compatibility-summary dd[data-state="warning"] {
+  color: #85610f;
+}
+
 .compatibility-summary dd[data-state="failed"] {
   color: #9d2d2d;
 }
@@ -776,6 +784,10 @@ p {
 .compatibility-item[data-state="failed"],
 .compatibility-item[data-state="unsupported"] {
   background: rgba(255, 247, 247, 0.7);
+}
+
+.compatibility-item[data-state="unverified"] {
+  background: rgba(255, 251, 237, 0.72);
 }
 
 .compatibility-order {
@@ -851,6 +863,12 @@ p {
 .compatibility-state[data-state="pending"] {
   color: #77683c;
   background: #fffdf5;
+}
+
+.compatibility-state[data-state="unverified"] {
+  border-color: #c8ae6a;
+  color: #85610f;
+  background: #fffbef;
 }
 
 .debug-tool-list {

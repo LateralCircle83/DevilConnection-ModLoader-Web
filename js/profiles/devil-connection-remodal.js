@@ -252,7 +252,7 @@
 
   DCWeb.DevilConnectionRemodalPatch = {
     description: '保持原版 Remodal 弹窗在浏览器视口中按 Tyrano 游戏坐标等比缩放',
-    failure: 'abort-session',
+    failure: 'warn-and-continue',
     id: 'devil-connection-remodal-browser-scale',
     name: 'Remodal 浏览器缩放兼容',
     required: true,

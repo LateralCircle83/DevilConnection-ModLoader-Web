@@ -17,7 +17,7 @@ require('../js/kernel/namespace.js')
 require('../js/shell/player-controller.js')
 
 function createView() {
-  const state = { gameTitle: '', ready: false, status: '' }
+  const state = { gameTitle: '', ready: false, status: '', statusState: '' }
   return {
     state,
     frame: { contentWindow: { __dcStartGame() {} } },
@@ -25,7 +25,7 @@ function createView() {
     renderMods() {},
     setModCount() {},
     setProgress() {},
-    setStatus(value) { state.status = value },
+    setStatus(value, statusState) { state.status = value; state.statusState = statusState || '' },
     setLaunchReady(value) { state.ready = value },
     showPlayer(file, version, modCount, gameTitle) { state.gameTitle = gameTitle },
     showError(error) { throw error },
@@ -57,9 +57,27 @@ messageHandler({
 assert.equal(controller.preparedSession.ready, true)
 assert.equal(view.state.ready, true)
 assert.equal(view.state.status, '启动环境已就绪，可以开始游戏')
+assert.equal(view.state.statusState, 'ready')
 
 controller.start()
 assert.equal(view.state.gameTitle, 'Title from Config.tjs')
+
+const warningView = createView()
+const warningController = new window.DCWeb.PlayerController(warningView, {})
+warningController.bind()
+warningController.preparedSession = {
+  compatibility: { status: 'warning' },
+  launchId: 8,
+  launchToken: 'warning-token',
+  ready: false,
+}
+messageHandler({
+  source: {},
+  data: { type: 'dc-player-ready', launchId: 8, launchToken: 'warning-token' },
+})
+assert.equal(warningView.state.ready, true)
+assert.equal(warningView.state.status, '部分兼容补丁未应用，仍可尝试开始游戏')
+assert.equal(warningView.state.statusState, 'warning')
 
 async function testPreparedStorageSuspension() {
   const events = []

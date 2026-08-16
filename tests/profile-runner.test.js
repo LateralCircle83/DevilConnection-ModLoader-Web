@@ -46,6 +46,8 @@ async function main() {
   const report = await window.DCWeb.ProfileRunner.run(profile, resolver)
   assert.equal(resolver.current, 'beta:ready')
   assert.equal(report.status, 'ready')
+  assert.equal(report.compatible, true)
+  assert.equal(report.launchAllowed, true)
   assert.deepEqual(report.patches.map((patch) => patch.status), ['applied', 'applied'])
   assert.deepEqual(report.patches.map((patch) => patch.sourceLayerId), ['mod:test', 'mod:test'])
 
@@ -136,6 +138,94 @@ async function main() {
     },
   )
 
+  let warningPrepared = false
+  const warningReport = await window.DCWeb.ProfileRunner.run({
+    id: 'unknown-base-video',
+    patches: [{
+      ...binaryProfile.patches[0],
+      failure: 'warn-and-continue',
+      signatures: [{ sha256: '0'.repeat(64) }],
+    }],
+  }, {
+    getBlob() { return new Blob([binarySource]) },
+    prepareBinary() { warningPrepared = true },
+    resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
+  })
+  assert.equal(warningReport.status, 'warning')
+  assert.equal(warningReport.compatible, false)
+  assert.equal(warningReport.launchAllowed, true)
+  assert.equal(warningReport.patches[0].status, 'unverified')
+  assert.match(warningReport.patches[0].message, /未执行此转换，仍可尝试启动/)
+  assert.equal(warningPrepared, false)
+
+  const continued = { value: 'alpha' }
+  const continuedReport = await window.DCWeb.ProfileRunner.run({
+    id: 'continued-profile',
+    patches: [
+      {
+        failure: 'warn-and-continue',
+        id: 'missing',
+        required: true,
+        signatures: [{ count: 1, text: 'unused' }],
+        target: 'missing.js',
+        transform() { throw new Error('missing transforms must not run') },
+      },
+      {
+        failure: 'abort-session',
+        id: 'following',
+        required: true,
+        signatures: [{ count: 1, text: 'alpha' }],
+        target: 'engine.js',
+        transform(source) { return source.replace('alpha', 'continued') },
+      },
+    ],
+  }, {
+    prepareText(path, text) { continued.value = text },
+    readText() { return Promise.resolve(continued.value) },
+    resolve(path) { return path === 'engine.js' ? { kind: 'base', layerId: 'base-game', path } : null },
+  })
+  assert.equal(continuedReport.status, 'warning')
+  assert.deepEqual(continuedReport.patches.map((patch) => patch.status), ['unverified', 'applied'])
+  assert.equal(continued.value, 'continued')
+
+  const failedButLaunchable = await window.DCWeb.ProfileRunner.run({
+    id: 'failed-but-launchable',
+    patches: [{
+      failure: 'warn-and-continue',
+      id: 'read-failure',
+      required: true,
+      signatures: [{ count: 1, text: 'alpha' }],
+      target: 'engine.js',
+      transform(source) { return source },
+    }],
+  }, {
+    readText() { return Promise.reject(new Error('read failed')) },
+    resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
+  })
+  assert.equal(failedButLaunchable.status, 'warning')
+  assert.equal(failedButLaunchable.launchAllowed, true)
+  assert.equal(failedButLaunchable.patches[0].status, 'failed')
+
+  let transformFailurePrepared = false
+  const transformFailure = await window.DCWeb.ProfileRunner.run({
+    id: 'transform-failure',
+    patches: [{
+      failure: 'warn-and-continue',
+      id: 'broken-transform',
+      required: true,
+      signatures: [{ count: 1, text: 'alpha' }],
+      target: 'engine.js',
+      transform() { throw new Error('transform failed') },
+    }],
+  }, {
+    prepareText() { transformFailurePrepared = true },
+    readText() { return Promise.resolve('alpha') },
+    resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
+  })
+  assert.equal(transformFailure.status, 'warning')
+  assert.equal(transformFailure.patches[0].status, 'failed')
+  assert.equal(transformFailurePrepared, false)
+
   await assert.rejects(
     window.DCWeb.ProfileRunner.run(profile, createResolver('unsupported')),
     function (error) {
@@ -153,6 +243,13 @@ async function main() {
       patches: [{ id: 'loose', failure: 'abort-session', required: true, target: 'engine.js', transform(source) { return source } }],
     }, createResolver('alpha')),
     /requires strict source signatures/,
+  )
+  await assert.rejects(
+    window.DCWeb.ProfileRunner.run({
+      id: 'invalid-failure-policy',
+      patches: [{ ...profile.patches[0], failure: 'ignore' }],
+    }, createResolver('alpha')),
+    /invalid failure policy/,
   )
   console.log('Profile runner tests passed')
 }

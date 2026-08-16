@@ -22,6 +22,7 @@
   function createReport(profile) {
     return {
       compatible: true,
+      launchAllowed: false,
       patches: (profile.patches || []).map(clonePatchState),
       profileId: profile.id,
       profileName: profile.name || profile.id,
@@ -127,6 +128,7 @@
     state.status = status
     state.message = message
     report.compatible = false
+    report.launchAllowed = false
     report.status = 'failed'
     var error = new Error(message)
     error.name = 'ProfileCompatibilityError'
@@ -136,11 +138,28 @@
     throw error
   }
 
+  function handlePatchIssue(report, state, status, message, cause, abortStatus) {
+    if (state.failure !== 'warn-and-continue') fail(report, state, abortStatus || status, message, cause)
+    state.status = status
+    state.message = message + '；未执行此转换，仍可尝试启动'
+    report.compatible = false
+    report.status = 'warning'
+    if (global.console && typeof global.console.warn === 'function') {
+      global.console.warn('[DCWeb] ' + state.name + '：' + state.message, cause || '')
+    }
+  }
+
+  function handleUnsupportedSource(report, state, message) {
+    handlePatchIssue(report, state, 'unverified', message, null, 'unsupported')
+  }
+
   function validatePatch(patch) {
     if (!patch || typeof patch.id !== 'string' || !patch.id) throw new TypeError('Profile patch requires an id')
     if (typeof patch.target !== 'string' || !patch.target) throw new TypeError('Profile patch ' + patch.id + ' requires a target')
     if (patch.required !== true) throw new TypeError('Profile patch ' + patch.id + ' must be declared as required')
-    if (patch.failure !== 'abort-session') throw new TypeError('Profile patch ' + patch.id + ' must abort the session on failure')
+    if (patch.failure !== 'abort-session' && patch.failure !== 'warn-and-continue') {
+      throw new TypeError('Profile patch ' + patch.id + ' has an invalid failure policy')
+    }
     if (!Array.isArray(patch.signatures) || !patch.signatures.length) throw new TypeError('Profile patch ' + patch.id + ' requires strict source signatures')
     if (patch.unsupportedMod !== undefined && patch.unsupportedMod !== 'delegate-to-runtime') {
       throw new TypeError('Profile patch ' + patch.id + ' has an invalid unsupportedMod policy')
@@ -191,7 +210,8 @@
 
       var resolved = resolver.resolve(patch.target)
       if (!resolved) {
-        fail(report, state, 'failed', '缺少必要兼容目标：' + patch.target)
+        handlePatchIssue(report, state, 'unverified', '缺少兼容目标：' + patch.target, null, 'failed')
+        continue
       }
       state.sourceKind = resolved.kind || ''
       state.sourceLayerId = resolved.layerId || ''
@@ -204,13 +224,15 @@
           if (!blob || typeof blob.arrayBuffer !== 'function') throw new Error('Binary target is unavailable')
           if (blob.size > patch.maxBytes) {
             if (delegateUnsupportedMod(patch, state, '资源大小超过已知补丁范围')) continue patchLoop
-            fail(report, state, 'unsupported', (patch.name || patch.id) + ' 超过补丁读取上限：' + blob.size + ' > ' + patch.maxBytes)
+            handleUnsupportedSource(report, state, (patch.name || patch.id) + ' 超过补丁读取上限：' + blob.size + ' > ' + patch.maxBytes)
+            continue patchLoop
           }
           source = await blob.arrayBuffer()
         } else source = await resolver.readText(patch.target)
       } catch (error) {
         if (error && error.name === 'ProfileCompatibilityError') throw error
-        fail(report, state, 'failed', '无法读取兼容目标：' + patch.target, error)
+        handlePatchIssue(report, state, 'failed', '无法读取兼容目标：' + patch.target, error)
+        continue
       }
 
       var signatures = patch.signatures || []
@@ -220,13 +242,15 @@
           var binaryRule = signatures[binaryIndex]
           if (binaryRule.size !== undefined && source.byteLength !== binaryRule.size) {
             if (delegateUnsupportedMod(patch, state, '资源大小与已知版本不匹配')) continue patchLoop
-            fail(report, state, 'unsupported', (binaryRule.name || patch.name || patch.id) + ' 的大小不受支持：预期 ' + binaryRule.size + ' 字节，实际 ' + source.byteLength + ' 字节')
+            handleUnsupportedSource(report, state, (binaryRule.name || patch.name || patch.id) + ' 的大小不受支持：预期 ' + binaryRule.size + ' 字节，实际 ' + source.byteLength + ' 字节')
+            continue patchLoop
           }
           if (binaryRule.sha256) {
             digest = digest || sha256(source)
             if (digest !== binaryRule.sha256.toLowerCase()) {
               if (delegateUnsupportedMod(patch, state, '资源摘要与已知版本不匹配')) continue patchLoop
-              fail(report, state, 'unsupported', (binaryRule.name || patch.name || patch.id) + ' 的 SHA-256 不受支持')
+              handleUnsupportedSource(report, state, (binaryRule.name || patch.name || patch.id) + ' 的 SHA-256 不受支持')
+              continue patchLoop
             }
           }
         }
@@ -236,12 +260,8 @@
           var actual = countMatches(source, rule.text)
           if (actual !== rule.count) {
             if (delegateUnsupportedMod(patch, state, '源码特征与已知版本不匹配')) continue patchLoop
-            fail(
-              report,
-              state,
-              'unsupported',
-              (rule.name || patch.name || patch.id) + ' 的源码特征不受支持：预期 ' + rule.count + ' 处，实际 ' + actual + ' 处',
-            )
+            handleUnsupportedSource(report, state, (rule.name || patch.name || patch.id) + ' 的源码特征不受支持：预期 ' + rule.count + ' 处，实际 ' + actual + ' 处')
+            continue patchLoop
           }
         }
       }
@@ -261,11 +281,12 @@
         state.status = unchanged ? 'not-needed' : 'applied'
         state.message = unchanged ? '当前资源无需转换' : '已应用必要的浏览器兼容转换'
       } catch (error) {
-        fail(report, state, 'failed', (patch.name || patch.id) + ' 应用失败：' + (error.message || error), error)
+        handlePatchIssue(report, state, 'failed', (patch.name || patch.id) + ' 应用失败：' + (error.message || error), error)
       }
     }
 
-    report.status = 'ready'
+    report.launchAllowed = true
+    if (report.status === 'checking') report.status = 'ready'
     return report
   }
 

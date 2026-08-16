@@ -34,6 +34,7 @@ assert.equal(profile.parseGameTitle("System.title='Devil Connection Web'"), 'Dev
 assert.equal(profile.parseGameTitle(';projectID=DevilConnection'), '')
 assert.equal(profile.patches[0].id, 'devil-connection-apng-browser-compat')
 assert.equal(profile.patches[0].required, true)
+assert.equal(profile.patches[0].failure, 'warn-and-continue')
 assert.equal(profile.patches[0].target, 'tyrano/libs/apng.js')
 assert.equal(profile.patches[1].id, 'devil-connection-kiri-video-android-compat')
 assert.equal(profile.patches[1].target, 'data/video/kiri2.mp4')
@@ -62,17 +63,14 @@ async function testApngPatch() {
   assert.match(prepared.text, /ArrayBuffer\.isView\(blob\)/)
   assert.match(prepared.text, /if \(!apng \|\| !apng\.images/)
 
-  await assert.rejects(
-    window.DCWeb.ProfileRunner.run(apngProfile, {
-      resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
-      readText() { return Promise.resolve(apngSource().replace('const bytes = new Uint8Array(blob.buffer)', 'const bytes = blob')) },
-    }),
-    function (error) {
-      assert.equal(error.name, 'ProfileCompatibilityError')
-      assert.equal(error.compatibility.patches[0].status, 'unsupported')
-      return /预期 1 处，实际 0 处/.test(error.message)
-    },
-  )
+  const warning = await window.DCWeb.ProfileRunner.run(apngProfile, {
+    resolve(path) { return { kind: 'base', layerId: 'base-game', path } },
+    readText() { return Promise.resolve(apngSource().replace('const bytes = new Uint8Array(blob.buffer)', 'const bytes = blob')) },
+  })
+  assert.equal(warning.status, 'warning')
+  assert.equal(warning.launchAllowed, true)
+  assert.equal(warning.patches[0].status, 'unverified')
+  assert.match(warning.patches[0].message, /预期 1 处，实际 0 处/)
 }
 
 Promise.all([testApngPatch(), profile.readTitle({

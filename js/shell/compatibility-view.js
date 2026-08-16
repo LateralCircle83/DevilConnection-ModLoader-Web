@@ -12,7 +12,9 @@
     'not-needed': '无需转换',
     pending: '等待检查',
     ready: '兼容就绪',
+    unverified: '版本未验证',
     unsupported: '不受支持',
+    warning: '有警告，可启动',
   }
 
   function createElement(doc, tag, className, text) {
