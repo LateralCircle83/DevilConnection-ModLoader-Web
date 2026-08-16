@@ -58,7 +58,7 @@
       "name": "兼容型动画懒加载",
       "description": "按需解码非关键 APNG，降低移动端启动内存峰值；可在启动前关闭",
       "version": "1.0.0",
-      "author": "项目维护者",
+      "author": "LateralChain83",
       "file": "dc_safe_apng.asar",
       "size": 20603
     },
@@ -74,11 +74,11 @@
     {
       "id": "dc_toolbox",
       "name": "恶魔连结工具箱",
-      "description": "游戏内实时修改工具：收集解锁、数值编辑、路线开关、游戏变速与成就补发",
-      "version": "1.0.1",
+      "description": "游戏内实时修改工具：收集解锁、数值编辑、路线开关、游戏变速与成就补发；游戏中按 F9 呼出或关闭工具箱",
+      "version": "1.0.2",
       "author": "Luoyu-Wangchai",
       "file": "dc_toolbox.asar",
-      "size": 21386
+      "size": 20731
     },
     {
       "id": "dc_translate_zh_cn",

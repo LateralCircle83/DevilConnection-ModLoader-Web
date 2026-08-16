@@ -6,6 +6,8 @@ const path = require('node:path')
 
 global.window = { URL }
 require('../js/kernel/namespace.js')
+require('../js/kernel/resource-path.js')
+require('../js/kernel/asar-archive.js')
 require('../js/shell/recommended-mods-controller.js')
 
 const root = path.join(__dirname, '..')
@@ -128,11 +130,28 @@ async function testRepositoryCatalog() {
     const filePath = path.join(recommendedRoot, mod.fileName)
     const stats = fs.statSync(filePath)
     assert.equal(stats.isFile(), true)
+    assert.equal(stats.size, mod.size)
   }
   for (const mod of externalMods) {
     assert.equal(fs.existsSync(path.join(recommendedRoot, mod.fileName)), false)
     assert.match(mod.downloadUrl, /^https:\/\/(?:github\.com|raw\.githubusercontent\.com)\//)
   }
+}
+
+async function testToolboxPackage() {
+  const packagePath = path.join(recommendedRoot, 'dc_toolbox.asar')
+  const packageBlob = new Blob([fs.readFileSync(packagePath)])
+  Object.defineProperty(packageBlob, 'name', { configurable: true, value: 'dc_toolbox.asar' })
+  const archive = await window.DCWeb.AsarArchive.open(packageBlob)
+  const hook = await archive.readText('hook.js')
+  const manifest = JSON.parse(await archive.readText('mods.json'))
+
+  assert.deepEqual(archive.list(), ['hook.js', 'mods.json'])
+  assert.match(hook, /e\.key === 'F9'/)
+  assert.doesNotMatch(hook, /dct-float-btn|浮动按钮/)
+  assert.equal(manifest.version, 102)
+  assert.equal(manifest.displayVersion, '1.0.2')
+  assert.match(manifest.description, /F9/)
 }
 
 function testStaticServerBoundary() {
@@ -173,6 +192,7 @@ async function main() {
   testCatalogValidation()
   await testControllerLoadsOnceAndRetries()
   await testRepositoryCatalog()
+  await testToolboxPackage()
   testStaticServerBoundary()
   testManagerMarkupAndResponsiveLayout()
   console.log('Recommended mods tests passed')
