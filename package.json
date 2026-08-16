@@ -1,0 +1,9 @@
+{
+  "name": "devilconnection-modloader-web",
+  "version": "0.1.0",
+  "description": "Static browser shell for running a user-provided Devil Connection app.asar",
+  "private": true,
+  "scripts": {
+    "start": "node tools/static-server.js"
+  }
+}

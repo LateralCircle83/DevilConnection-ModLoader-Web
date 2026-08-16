@@ -6,7 +6,7 @@ This is the sole agent-facing architecture, invariant, and verification document
 
 Maintain a static browser shell that runs a user-provided Devil Connection `app.asar` without extracting, rewriting, uploading, or redistributing game content.
 
-The application has no build step, package manager, backend, Service Worker, or production Node.js dependency. `index.html` loads classic deferred scripts in dependency order. Modules publish only through `window.DCWeb`.
+The application has no build step, installed package dependencies, backend, Service Worker, or production Node.js dependency. Root `package.json` provides the zero-install cross-platform `npm start` convenience command for the existing development server; it must not become a build or runtime requirement. `index.html` loads classic deferred scripts in dependency order. Modules publish only through `window.DCWeb`.
 
 ## Non-negotiable constraints
 
@@ -17,6 +17,7 @@ The application has no build step, package manager, backend, Service Worker, or 
 - Do not commit unless the user explicitly requests a commit.
 - Preserve unrelated dirty-worktree changes.
 - Keep the app usable from a plain static server. Do not introduce a required build tool or server API.
+- Keep `npm start` dependency-free and routed through `tools/static-server.js`; do not replace its file allowlist with a generic repository-wide server.
 - Prefer existing ES5-style IIFE modules and repository conventions over a framework migration.
 
 ## Runtime architecture
