@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This is the sole agent-facing architecture, invariant, and verification document for the repository. Keep documentation ownership strict: `README.md` is the user-facing Chinese guide and current support matrix; `docs/TODO.md` contains only unresolved work, deferred decisions, and rejected proposals; `docs/HISTORY.md` contains meaningful completed changes and investigation results; `docs/THIRD_PARTY_NOTICES.md` contains only upstream origins, copyright notices, and third-party license terms; `docs/ModsUsage.md` is a read-only upstream specification snapshot, not this project's compatibility promise. Do not duplicate implementation rules, test commands, completed work, or license text across those files. Cross-link to the owning document instead.
+This is the sole agent-facing architecture, invariant, and verification document for the repository. Keep documentation ownership strict: `README.md` is the user-facing Chinese guide and current support matrix; root `LICENSE` is the unmodified AGPL-3.0-only text for project-owned code; `docs/TODO.md` contains only unresolved work, deferred decisions, and rejected proposals; `docs/HISTORY.md` contains meaningful completed changes and investigation results; `docs/THIRD_PARTY_NOTICES.md` contains only upstream origins, copyright notices, and third-party license terms; `docs/ModsUsage.md` is a read-only upstream specification snapshot, not this project's compatibility promise. Do not duplicate implementation rules, test commands, completed work, or license text across those files. Cross-link to the owning document instead.
 
 ## Objective
 
@@ -13,6 +13,7 @@ The application has no build step, installed package dependencies, backend, Serv
 - Never unpack, rewrite, stage, or commit the game archive, arbitrary user-provided `*.asar`, or any `*.asar.unpacked` content. Curated packages directly under `recommended-mods/` are the sole exception and may be versioned when the maintainer has selected them for the bundled catalog.
 - Treat all other local ASAR files as user-owned test fixtures. Read them only when the task requires an end-to-end launch test. Keep the root `/app.asar` ignored; curated packages belong directly under `recommended-mods/`.
 - Do not add game assets, extracted source, or copyrighted content to the repository.
+- Keep root `LICENSE` byte-for-byte equivalent to the official GNU AGPL version 3 text. Put scope and third-party exceptions in `README.md` and `docs/THIRD_PARTY_NOTICES.md`, never in the license text.
 - Keep archive access read-only and range-based. `AsarArchive` may parse the header and return `File.slice()` blobs; it must not own URL creation or runtime policy.
 - Do not commit unless the user explicitly requests a commit.
 - Preserve unrelated dirty-worktree changes.

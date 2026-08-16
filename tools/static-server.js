@@ -9,6 +9,7 @@ const rootDirectory = path.resolve(__dirname, '..')
 const host = '0.0.0.0'
 const port = parsePort(process.argv[2] || '4173')
 const allowedRootFiles = new Set([
+  'LICENSE',
   'README.md',
   'docs/HISTORY.md',
   'docs/ModsUsage.md',
@@ -160,10 +161,13 @@ function resolvePublicFile(requestUrl, listedRecommendedFiles) {
 }
 
 function createResponseHeaders(filePath, size) {
+  const contentType = path.basename(filePath) === 'LICENSE'
+    ? 'text/plain; charset=utf-8'
+    : mimeTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream'
   const headers = {
     'Cache-Control': 'no-cache',
     'Content-Length': size,
-    'Content-Type': mimeTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+    'Content-Type': contentType,
     'X-Content-Type-Options': 'nosniff'
   }
   const relativePath = path.relative(rootDirectory, filePath).split(path.sep).join('/')

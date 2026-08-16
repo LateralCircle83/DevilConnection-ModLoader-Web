@@ -157,6 +157,8 @@ async function testToolboxPackage() {
 function testStaticServerBoundary() {
   const packagePath = staticServer.resolvePublicFile('/recommended-mods/example_mod.asar', new Set(['example_mod.asar']))
   assert.match(packagePath, /recommended-mods[\\/]example_mod\.asar$/)
+  const licensePath = staticServer.resolvePublicFile('/LICENSE')
+  assert.match(licensePath, /[\\/]LICENSE$/)
   assert.match(staticServer.resolvePublicFile('/recommended-mods/catalog.json'), /recommended-mods[\\/]catalog\.json$/)
   assert.match(staticServer.resolvePublicFile('/docs/HISTORY.md'), /docs[\\/]HISTORY\.md$/)
   assert.match(staticServer.resolvePublicFile('/docs/ModsUsage.md'), /docs[\\/]ModsUsage\.md$/)
@@ -179,6 +181,9 @@ function testStaticServerBoundary() {
   assert.equal(packageHeaders['Content-Disposition'], 'attachment; filename="example_mod.asar"')
   const indexHeaders = staticServer.createResponseHeaders(path.join(root, 'index.html'), 100)
   assert.equal(indexHeaders['Content-Disposition'], undefined)
+  const licenseHeaders = staticServer.createResponseHeaders(licensePath, 34523)
+  assert.equal(licenseHeaders['Content-Type'], 'text/plain; charset=utf-8')
+  assert.equal(licenseHeaders['Content-Disposition'], undefined)
 }
 
 function testManagerMarkupAndResponsiveLayout() {

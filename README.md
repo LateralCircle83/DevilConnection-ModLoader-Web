@@ -130,6 +130,10 @@ Web 版识别单个 `.asar` 根目录中的 `mods.json`、可选 `hook.js`、可
 
 如果挂载阶段失败，页面会自动展开“加载详情”。如果游戏已经启动后停住，请在浏览器开发者工具的控制台中确认具体错误。
 
+## 许可证
+
+除另有说明，本项目原创代码以 [GNU Affero General Public License v3.0](./LICENSE)（`AGPL-3.0-only`）发布。第三方代码与上游规范继续适用各自的许可，详见 [THIRD_PARTY_NOTICES.md](./docs/THIRD_PARTY_NOTICES.md)；游戏内容及独立发布的模组包不因收录、兼容或链接而改用本项目许可证。
+
 ## 项目文档
 
 维护约束与验证命令见 [AGENTS.md](./AGENTS.md)，未完成事项见 [TODO.md](./docs/TODO.md)，已完成变更见 [HISTORY.md](./docs/HISTORY.md)，上游模组规范见 [ModsUsage.md](./docs/ModsUsage.md)，第三方来源与许可证见 [THIRD_PARTY_NOTICES.md](./docs/THIRD_PARTY_NOTICES.md)。

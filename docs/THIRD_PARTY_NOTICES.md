@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-This file covers third-party code and upstream compatibility specifications used by this project. It does not grant a license for Devil Connection game content or independently distributed mod packages.
+Project-owned code is licensed under the root [LICENSE](../LICENSE). This file records third-party code and upstream compatibility specifications that retain their own terms. Neither file grants a license for Devil Connection game content or independently distributed mod packages.
 
 ## DevilConnection ModLoader
 

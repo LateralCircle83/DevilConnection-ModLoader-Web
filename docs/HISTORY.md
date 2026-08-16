@@ -49,6 +49,7 @@
 
 ### 文档
 
+- 增加根目录 GNU AGPL v3 完整许可证，并以 `AGPL-3.0-only` 标记包元数据；README 只说明项目原创代码、第三方材料、游戏内容和独立模组之间的许可边界，第三方条款仍集中保存在 `docs/THIRD_PARTY_NOTICES.md`。开发服务器仅通过精确白名单额外提供许可证文本。
 - 收敛 Markdown 文档职责：根目录 `README.md` 只保留用户指南与 Web 兼容范围，根目录 `AGENTS.md` 统一维护架构、约束和验收命令，`docs/TODO.md` 只记录未完成、暂缓和拒绝事项，`docs/HISTORY.md` 归档完成项与调查结论，`docs/THIRD_PARTY_NOTICES.md` 只保存第三方来源和许可；移除各文件之间重复的实现说明与已完成待办。
 - 将上游 `ModsUsage.md` 保存为 `docs/ModsUsage.md`，供离线查阅 DCML/Rebuild 完整模组规范；`README.md` 只说明 Web 壳实际支持的子集，第三方声明保存原始来源与 BSD-3-Clause 全文。临时服务器仅通过精确白名单提供四份 `docs/` 文档，不开放任意目录读取。
 - 移除职责重复的 `ARCHITECTURE.md`。
