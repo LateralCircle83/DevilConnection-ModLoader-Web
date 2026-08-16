@@ -50,27 +50,31 @@ start_server.bat 8080
 
 部分浏览器允许直接打开 `index.html`，但使用本地 HTTP 地址通常具有更稳定的资源加载行为。
 
-服务器仅监听当前电脑的网络接口，并只提供网页运行必需的项目文件，不会提供项目目录中的 ASAR、Git 数据或目录列表。首次允许局域网访问时，Windows 防火墙可能询问是否允许 Node.js 通信，请仅对可信的专用网络放行。通过另一台设备打开网页时，ASAR 仍需由那台设备的浏览器自行选择，不会从服务器电脑自动传输。
+服务器仅监听当前电脑的网络接口，并只提供网页文件与推荐目录中明确列出的模组；根目录 `app.asar`、未列出的 ASAR、Git 数据和目录列表均不会对外提供。首次允许局域网访问时，Windows 防火墙可能询问是否允许 Node.js 通信，请仅对可信的专用网络放行。通过另一台设备打开网页时，游戏 ASAR 仍需由那台设备的浏览器自行选择，不会从服务器电脑自动传输。
 
 游戏运行后，左上角按钮可以打开自适应浮动面板，查看当前归档信息、使用包含 Esc、F1–F12、QWERTY、修饰键、导航区和方向键的紧凑 TKL 虚拟键盘，并查询游戏页面产生的 Warn/Error 日志。面板同时提供日志筛选、刷新、复制、清空，以及重新载入或退出当前会话。虚拟键只能触发游戏页面接受的合成键盘事件，不能代替真实用户操作调用浏览器的全屏、开发者工具等受保护功能。
 
 ## 模组
 
-模组列表由上到下依次载入，越靠后的模组覆盖优先级越高。若多个模组和游戏本体含有同一路径，游戏会使用列表中最靠后的启用模组版本。
+本项目以本地保存的 [DevilConnection ModLoader (Rebuild) 模组开发规范](./docs/ModsUsage.md) 作为 DCML 模组包格式的上游参考。模组作者应以该文档了解完整的 `.asar` 目录、`mods.json` 和桌面加载器约定；本项目只实现适合纯浏览器环境的兼容子集。
+
+Web 版识别单个 `.asar` 根目录中的 `mods.json`、可选 `hook.js`、可选 `config.schema.json` 与 `data/` 资源覆盖。`mods.json` 的 `id`、`name`、`description`、`version` 和 `displayVersion` 用于显示和稳定标识；缺少清单时仍可按文件名载入。配置沿用 `plugins/config/<bareName>.json` 契约，但实际保存在当前网站的 localStorage 中。
+
+模组列表由上到下依次载入，越靠后的启用模组覆盖优先级越高；开始游戏后，本次会话的顺序固定，调整前需先退出。`hook.js` 是可信代码，Web 版会在游戏 iframe 的 `DOMContentLoaded` 后按列表顺序执行，因此模组不能依赖抢在页面脚本之前运行。同步文件兼容仅覆盖模组文本读取和配置读写，不提供通用文件系统。
+
+桌面 Rebuild 的插件目录扫描、重命名启停、版本与依赖阻断、自动更新、远程工坊和任意磁盘写入目前不属于 Web 兼容范围。`window.DCML` 工坊入口须由相应模组提供，hook 应先检测接口是否存在。
 
 “推荐模组”页面提供项目维护者确认可用的下载项，文件可能由本项目或模组作者的 GitHub 页面提供。下载不会自动载入或启用模组；下载完成后仍由用户通过“添加模组”选择本地 `.asar`。版本、作者和文件大小等已有信息会一并显示。
 
-模组顺序在点击“开始游戏”时固定。若要调整本次会话使用的模组，请先退出游戏再修改列表。
-
 在支持 File System Access API 的 Chrome、Edge 等浏览器中，页面会记住核心归档、模组顺序和启用状态。刷新后若读取权限仍有效会自动恢复；浏览器要求重新确认权限时，点击“恢复上次选择”即可。项目只保存浏览器提供的本地文件句柄，不会把 ASAR 内容复制到 IndexedDB。移动或删除原文件、清除站点数据、更换地址或使用不支持该接口的浏览器后，需要重新选择文件。
 
-带有 `hook.js` 的模组会在游戏页面中执行代码，请只载入可信来源的文件；“推荐”只表示对应版本经过本项目验证，不会把代码模组变成沙箱。带有 `config.schema.json` 的模组可在模组列表中打开配置表单；配置保存在当前浏览器来源中，并按原 DCML `plugins/config/<模组文件名>.json` 约定提供给模组读取。存档仍不会记录使用过的模组组合。
+请只载入可信来源的模组；“推荐”只表示对应版本经过验证，不会把 hook 变成沙箱。存档不会记录使用过的模组组合。
 
 ## 兼容性
 
 载入核心或改变模组列表后，管理器会针对最终生效的资源检查浏览器运行所必需的转换。“兼容性”页面会列出转换目标、实际来源和处理结果；若同一路径已被模组覆盖，来源会显示对应模组。
 
-这些转换只发生在当前页面的内存中，不会写回核心或模组 ASAR，也不能在页面中关闭。必要转换无法安全应用时，管理器会阻止开始游戏并自动显示失败项，避免继续执行结构不受支持的脚本。“导出诊断”只包含游戏版本、已启用模组标识和转换状态，不包含本地文件路径、文件句柄、归档内容或游戏源码。
+这些转换只发生在当前页面的内存中，不会写回核心或模组 ASAR，也不能在页面中关闭。当前兼容补丁无法安全应用时会保留原资源、显示警告并允许尝试启动；只有游戏身份校验、会话构建或明确声明为中止的错误才会阻止启动。“导出诊断”只包含游戏版本、已启用模组标识和转换状态，不包含本地文件路径、文件句柄、归档内容或游戏源码。
 
 ## 存档
 
@@ -126,29 +130,6 @@ start_server.bat 8080
 
 如果挂载阶段失败，页面会自动展开“加载详情”。如果游戏已经启动后停住，请在浏览器开发者工具的控制台中确认具体错误。
 
-## 开发验证
+## 项目文档
 
-运行资源路径、存档序列化、CSS 依赖和 VFS 覆盖规则测试：
-
-```console
-node tests/url-edge-cases.test.js
-node tests/media-source-fallback.test.js
-node tests/mp4-visual-fallback.test.js
-node tests/resource-readiness.test.js
-node tests/mod-loader.test.js
-node tests/mod-config.test.js
-node tests/mod-config-controller.test.js
-node tests/game-profile.test.js
-node tests/browser-save-store.test.js
-node tests/save-manager.test.js
-node tests/save-manager-controller.test.js
-node tests/local-source-store.test.js
-node tests/source-restore-controller.test.js
-node tests/profile-runner.test.js
-node tests/session-preparer.test.js
-node tests/compatibility-controller.test.js
-node tests/start-gate.test.js
-node tests/player-controller.test.js
-```
-
-后续开发计划见 [TODO.md](./TODO.md)，项目变更记录见 [HISTORY.md](./HISTORY.md)。
+维护约束与验证命令见 [AGENTS.md](./AGENTS.md)，未完成事项见 [TODO.md](./docs/TODO.md)，已完成变更见 [HISTORY.md](./docs/HISTORY.md)，上游模组规范见 [ModsUsage.md](./docs/ModsUsage.md)，第三方来源与许可证见 [THIRD_PARTY_NOTICES.md](./docs/THIRD_PARTY_NOTICES.md)。

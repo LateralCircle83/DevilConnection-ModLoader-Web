@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This is the sole agent-facing architecture and maintenance document for the repository. `README.md` is user-facing Chinese documentation; do not move internal implementation detail into it. Planned work and patch decisions live in `TODO.md`; record meaningful completed changes in `HISTORY.md`.
+This is the sole agent-facing architecture, invariant, and verification document for the repository. Keep documentation ownership strict: `README.md` is the user-facing Chinese guide and current support matrix; `docs/TODO.md` contains only unresolved work, deferred decisions, and rejected proposals; `docs/HISTORY.md` contains meaningful completed changes and investigation results; `docs/THIRD_PARTY_NOTICES.md` contains only upstream origins, copyright notices, and third-party license terms; `docs/ModsUsage.md` is a read-only upstream specification snapshot, not this project's compatibility promise. Do not duplicate implementation rules, test commands, completed work, or license text across those files. Cross-link to the owning document instead.
 
 ## Objective
 
@@ -67,7 +67,7 @@ Only the latest iframe navigation may retain a pending `load` callback. Supersed
 The source tree has five top-level responsibility domains. Add files to the narrowest existing domain; do not recreate one-folder-per-primitive layout.
 
 - `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, decoded-image/playable-video readiness, bounded fragmented-MP4 recovery, last-resort progressive-MP4 visual recovery, bounded iframe console monitoring, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
-- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-silent-videos.js` owns the exact-version silent-track transforms, `devil-connection-remodal.js` owns the exact-version Remodal layout transform, and `devil-connection.js` owns game identity, title reading, and the patch list.
+- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-silent-videos.js` owns the exact-version silent-track transforms, `devil-connection-remodal.js` owns the exact-version Remodal layout transform, `devil-connection-collection-scroll.js` owns the exact-version collection touch-scroll boundary, and `devil-connection.js` owns game identity, title reading, and the patch list.
 - `js/mods/`: DCML package, ordering, hook, and configuration compatibility. Later enabled VFS layers win, but hooks execute individually in UI order.
 - `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; `player-runtime-controls.js` owns whitelisted synthetic keys and diagnostics snapshot access; compatibility, save, source, recommended-mod catalog, and view modules own their corresponding manager behavior; `app.js` is composition only.
 - `js/vendor/`: third-party libraries retained without application ownership.
@@ -122,6 +122,7 @@ Keep behavior in the narrowest owning module. Do not create generic compatibilit
 
 ## Mod boundary
 
+- Treat the imported `docs/ModsUsage.md` snapshot as the DCML/Rebuild package-format reference. Its upstream source is recorded in `docs/THIRD_PARTY_NOTICES.md`; do not edit it to describe Web-only behavior. `README.md` owns the user-facing Web compatibility matrix and must be updated when behavior changes.
 - Mods are additional read-only `AsarArchive` sources with stable `mod:<id>` layer IDs. Never modify the base archive or fork resource lookup outside `LayeredVfs`.
 - UI order is semantic: packages load top-to-bottom and later enabled layers win. Reordering must update the displayed list without mutating an active session.
 - Launch plans are immutable for a running iframe. Exit before changing the effective mod set.
@@ -160,7 +161,7 @@ The original Remodal markup and 700px dialog coordinate width are likewise game-
 
 `ProfileRunner` is deliberately small and declarative. Every patch entry must provide an ID, target, required flag, strict signatures, failure policy, and transform. Text patches use exact source strings with expected counts. Binary patches must declare a positive read limit plus exact size and SHA-256 signatures, and may return only an `ArrayBuffer` or typed array. `warn-and-continue` records an `unverified` or `failed` patch, does not prepare a replacement resource, marks the report non-compatible but launchable, and continues checking later patches. `abort-session` remains available only when continuing cannot produce a valid session. Invalid patch declarations, base-game identity failure, and later session construction failure are not softened. The narrow `unsupportedMod: 'delegate-to-runtime'` policy may skip only a signature-unknown final source whose VFS kind is `mod`; exact mod matches still transform. Keep patch transforms in their own profile files; do not turn the runner into a general plugin API or allow manager-side patch toggles for required compatibility.
 
-The compatibility manager page is an observer, not an executor. It displays the report produced during session preparation and may export metadata-only JSON containing the profile, patch states, game version, and enabled mod identities. It must never export local file paths, handles, archive bytes, extracted content, or hook source. Consult `TODO.md` for accepted, conditional, deferred, and rejected candidates from the old-project audit.
+The compatibility manager page is an observer, not an executor. It displays the report produced during session preparation and may export metadata-only JSON containing the profile, patch states, game version, and enabled mod identities. It must never export local file paths, handles, archive bytes, extracted content, or hook source. Consult `docs/TODO.md` only for unresolved, evidence-gated, deferred, and rejected work.
 
 ## UI invariants
 

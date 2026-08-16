@@ -10,6 +10,10 @@ const host = '0.0.0.0'
 const port = parsePort(process.argv[2] || '4173')
 const allowedRootFiles = new Set([
   'README.md',
+  'docs/HISTORY.md',
+  'docs/ModsUsage.md',
+  'docs/THIRD_PARTY_NOTICES.md',
+  'docs/TODO.md',
   'favicon.ico',
   'index.html',
   'styles.css',
