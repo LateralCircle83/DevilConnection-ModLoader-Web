@@ -78,6 +78,7 @@
 
 ### 修复
 
+- Firefox 标题循环兼容：`title_loop` / `bg_loop` 共用的 MSE 循环在创建音频 `SourceBuffer` 前先探测 `MediaSource.isTypeSupported('audio/mpeg')`，Firefox 不支持时降级为仅视频 MSE，并用普通 `<audio>` 元素以 Blob URL 播放标题 MP3（主段播完切循环段），音量每 50ms 镜像标题视频元素，设置中 BGM 滑条（写 `sf._system_config_movie_volume`）与退场淡出都会实时跟随；拆除时先暂停并摘除视频 `src` 再关闭 MediaSource，消除 Firefox 的 `NS_ERROR_DOM_MEDIA_CANCELED` / demuxer detached 报错。标题循环音频主段约 95.7 秒、循环段约 80.7 秒。
 - 为 Safari 与 iOS 浏览器关闭旧 Tyrano 按 UA 将 `.ogg` 无条件改写为 `.m4a` 的逻辑：严格匹配 `kag.tag_audio.js`，把改写动作变为 no-op；归档中没有 M4A 时，Safari、iOS Chrome/Edge/Firefox 的 BGM、SE 与语音不再全部请求不存在的文件，直接使用 OGG。未知源码或模组覆盖保持原资源并产生可启动警告。
 - 为移动端前景电影建立标签级输入锁：严格匹配的自定义 `[movie_with_bg]` 与 Tyrano 内置 `[movie]` 在标签开始即隐藏事件层（引擎 `hideEventLayer` 会同步置 `is_stop`），关闭“标签开始到 `canplay`”之间的提前点击窗口；所有完成路径统一汇入幂等 `finish()`，移除视频、恢复事件层并恰好推进一次，`skip` 与 `ended` 不再重复推进。背景电影（`bgmode`）保留原事件层行为，桌面分支不受影响；未知源码或模组覆盖保持原资源并产生可启动警告。
 - Host Tyrano 适配新增通用异步 jump guard：在当前 jump `start()` 进入原有 1ms timer 前同步设置 `is_strong_stop=true`，让同一输入 burst 中的额外 `nextOrder()` 停在当前索引；原 `nextOrderWithLabel()` 继续负责解闸、场景加载和目标跳转。适配器安装时及模组 hook 完成后的真正启动前都会确认包装，且同步异常会恢复先前状态；不修改 `libs.js`、不全局去重 click/tap，也不依赖 `scene1.ks` 标签排列。

@@ -83,6 +83,8 @@ Web 壳会在 Tyrano 执行异步 `jump` 时暂时阻止新的剧情推进，并
 
 针对 Safari 与 iOS 浏览器，Web 壳会关闭旧版 Tyrano 按浏览器标识把 `.ogg` 改写为 `.m4a` 的逻辑，直接使用归档中实际存在的 OGG 音频；现代 Safari/iOS 可直接播放 Vorbis。
 
+Firefox 的 MSE 不支持 `audio/mpeg` 时，标题循环自动降级：视频保持无缝循环，标题配音改用普通音频元素播放（主段播完切循环段），音量跟随游戏设置中的 BGM 滑条并随退场淡出；退出时先断开视频元素再关闭 MediaSource，避免 Firefox 的媒体解码报错。
+
 ## 存档
 
 存档默认保存在浏览器的 IndexedDB 中；如果 IndexedDB 不可用，程序会尝试使用 localStorage。

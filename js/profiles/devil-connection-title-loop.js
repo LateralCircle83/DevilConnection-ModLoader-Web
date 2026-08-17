@@ -39,6 +39,73 @@
       }
     }
 
+    function warnAudioDegrade(state, error) {
+      if (!state || state.audioDegradeWarned) return
+      state.audioDegradeWarned = true
+      if (target.console && typeof target.console.warn === 'function') {
+        target.console.warn('[DC title loop] ' + state.name + ': ' + (error && error.message ? error.message : String(error)))
+      }
+    }
+
+    function createAudioFallback(state) {
+      if (state.audioFallback || !state.primaryAudioBuffer) return
+      var document = target.document
+      if (!document || typeof document.createElement !== 'function' ||
+        typeof target.Blob !== 'function' || typeof target.URL.createObjectURL !== 'function') {
+        return
+      }
+      try {
+        var audio = document.createElement('audio')
+        var primaryUrl = target.URL.createObjectURL(new target.Blob([state.primaryAudioBuffer], { type: 'audio/mpeg' }))
+        var loopUrl = state.secondaryAudioBuffer && state.secondaryAudioBuffer !== state.primaryAudioBuffer
+          ? target.URL.createObjectURL(new target.Blob([state.secondaryAudioBuffer], { type: 'audio/mpeg' }))
+          : primaryUrl
+        audio.loop = false
+        audio.volume = state.video && Number(state.video.volume) > 0 ? Number(state.video.volume) : 1
+        state.audioFallback = audio
+        state.audioFallbackUrls = [primaryUrl, loopUrl]
+        state.audioFallbackStart = function () {
+          if (state.disposed || !state.audioFallback) return
+          syncAudioFallbackVolume(state)
+          // 镜像标题视频音量：游戏淡出按 10ms 步进改写 video.volume，
+          // 视频循环节拍（约 80s）太慢，需要独立高频采样才能跟随淡出。
+          if (!state.volumeSyncTimer) {
+            state.volumeSyncTimer = target.setTimeout(function volumeSyncTick() {
+              if (state.disposed) {
+                state.volumeSyncTimer = 0
+                return
+              }
+              syncAudioFallbackVolume(state)
+              state.volumeSyncTimer = target.setTimeout(volumeSyncTick, 50)
+            }, 50)
+          }
+          audio.addEventListener('ended', function () {
+            if (state.disposed) return
+            if (audio.src === primaryUrl) {
+              audio.loop = true
+              audio.src = loopUrl
+              try { audio.play() } catch (error) {}
+            }
+          })
+          audio.src = primaryUrl
+          audio.loop = false
+          try { audio.play() } catch (error) {}
+        }
+        ;(document.body || document.documentElement).appendChild(audio)
+      } catch (error) {
+        warnAudioDegrade(state, error)
+      }
+    }
+
+    function syncAudioFallbackVolume(state) {
+      var audio = state && state.audioFallback
+      var video = state && state.video
+      if (!audio || !video) return
+      var volume = Number(video.volume)
+      if (!isFinite(volume)) return
+      audio.volume = Math.max(0, Math.min(1, volume))
+    }
+
     function clearLoopTimer(state, trackName) {
       var key = state.name + '_' + trackName
       var timer = dc.loopTimers[key]
@@ -46,11 +113,16 @@
       delete dc.loopTimers[key]
     }
 
-    function revokeVideoUrl(state) {
-      var video = state.video
-      var url = video && String(video.currentSrc || video.src || '')
-      if (!url || url.slice(0, 5) !== 'blob:' || !target.URL || typeof target.URL.revokeObjectURL !== 'function') return
-      try { target.URL.revokeObjectURL(url) } catch (error) {}
+    function detachVideo(state) {
+      var video = state && state.video
+      if (!video) return
+      try {
+        if (typeof video.pause === 'function') video.pause()
+      } catch (error) {}
+      try {
+        if (typeof video.removeAttribute === 'function') video.removeAttribute('src')
+        if (typeof video.load === 'function') video.load()
+      } catch (error) {}
     }
 
     function removeSourceBuffer(mediaSource, sourceBuffer) {
@@ -66,6 +138,8 @@
     function dispose(state, reason) {
       if (!state || state.disposed) return false
       state.disposed = true
+      var detachedUrl = state.video ? String(state.video.currentSrc || state.video.src || '') : ''
+      detachVideo(state)
       clearLoopTimer(state, 'v')
       clearLoopTimer(state, 'a')
 
@@ -79,12 +153,34 @@
       if (state.mediaSource.readyState === 'open') {
         try { state.mediaSource.endOfStream() } catch (endError) {}
       }
-      revokeVideoUrl(state)
+      if (detachedUrl && detachedUrl.slice(0, 5) === 'blob:' && target.URL && typeof target.URL.revokeObjectURL === 'function') {
+        try { target.URL.revokeObjectURL(detachedUrl) } catch (error) {}
+      }
+      if (state.audioFallback) {
+        try { state.audioFallback.pause() } catch (error) {}
+        try {
+          if (state.audioFallback.parentNode && typeof state.audioFallback.parentNode.removeChild === 'function') {
+            state.audioFallback.parentNode.removeChild(state.audioFallback)
+          }
+        } catch (error) {}
+      }
+      if (state.audioFallbackUrls) {
+        state.audioFallbackUrls.forEach(function (url) {
+          try { target.URL.revokeObjectURL(url) } catch (error) {}
+        })
+      }
+      if (state.volumeSyncTimer) {
+        try { target.clearTimeout(state.volumeSyncTimer) } catch (error) {}
+        state.volumeSyncTimer = 0
+      }
 
       state.primaryVideoBuffer = null
       state.primaryAudioBuffer = null
       state.secondaryVideoBuffer = null
       state.secondaryAudioBuffer = null
+      state.audioFallback = null
+      state.audioFallbackStart = null
+      state.audioFallbackUrls = null
       state.videoTrack = null
       state.audioTrack = null
       state.videoBuffer = null
@@ -268,6 +364,9 @@
             }
           })
         }
+        if (typeof state.audioFallbackStart === 'function') {
+          try { state.audioFallbackStart() } catch (error) {}
+        }
         scheduleLoop(state, 'v', loopVideoDuration, function () {
           return state.videoTrack.enqueue(state.secondaryVideoBuffer, function (sourceBuffer) {
             sourceBuffer.timestampOffset = bufferedEnd(sourceBuffer)
@@ -296,6 +395,10 @@
       var mediaSource = new target.MediaSource()
       var state = {
         audioBuffer: null,
+        audioDegradeWarned: false,
+        audioFallback: null,
+        audioFallbackStart: null,
+        audioFallbackUrls: null,
         audioTrack: null,
         disposed: false,
         failureWarned: false,
@@ -310,6 +413,7 @@
         videoBuffer: null,
         videoTrack: null,
         playWarning: false,
+        volumeSyncTimer: 0,
       }
 
       state.onSourceOpen = function () {
@@ -322,9 +426,21 @@
           state.videoTrack = createTrack(state, state.videoBuffer, 'Video')
           if (state.primaryAudioBuffer) {
             if (!state.secondaryAudioBuffer) throw new Error('Secondary title audio buffer is unavailable')
-            state.audioBuffer = mediaSource.addSourceBuffer(AUDIO_TYPE)
-            state.audioBuffer.mode = 'sequence'
-            state.audioTrack = createTrack(state, state.audioBuffer, 'Audio')
+            try {
+              var audioMseSupported =
+                typeof target.MediaSource === 'function' &&
+                typeof target.MediaSource.isTypeSupported === 'function' &&
+                target.MediaSource.isTypeSupported(AUDIO_TYPE)
+              if (!audioMseSupported) {
+                throw new Error(AUDIO_TYPE + ' MSE is not supported; title loop continues video-only')
+              }
+              state.audioBuffer = mediaSource.addSourceBuffer(AUDIO_TYPE)
+              state.audioBuffer.mode = 'sequence'
+              state.audioTrack = createTrack(state, state.audioBuffer, 'Audio')
+            } catch (audioError) {
+              warnAudioDegrade(state, audioError)
+              createAudioFallback(state)
+            }
           }
           begin(state)
         } catch (error) {

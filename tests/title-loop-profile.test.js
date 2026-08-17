@@ -144,6 +144,11 @@ class MediaSourceMock extends EventTargetMock {
   }
 
   addSourceBuffer(type) {
+    if (type === 'audio/mpeg' && this.environment.throwOnAudioSourceBuffer) {
+      const error = new Error('audio/mpeg SourceBuffer is not supported')
+      error.name = 'NotSupportedError'
+      throw error
+    }
     const sourceBuffer = new SourceBufferMock(this.environment, type)
     this.sourceBuffers.push(sourceBuffer)
     return sourceBuffer
@@ -176,15 +181,45 @@ function createEnvironment() {
     secondaryVideo: { duration: 2, id: 'video-loop' },
   }
   const environment = {
+    audioElement: null,
     concurrentAppendAttempts: 0,
+    audioMseSupported: true,
+    blobs: [],
     mediaSources: [],
+    nextUrl: 0,
     nextTimer: 0,
     now: 0,
+    objectUrls: [],
     revokedUrls: [],
     throwOnNextAppend: false,
+    throwOnAudioSourceBuffer: false,
     timers: new Map(),
     warnings: [],
   }
+  const audioElement = {
+    endedHandlers: [],
+    environment: environment,
+    loop: false,
+    parentNode: null,
+    pauseCalls: 0,
+    playCalls: 0,
+    src: '',
+    volume: 1,
+    addEventListener(type, handler) {
+      if (type === 'ended') this.endedHandlers.push(handler)
+    },
+    pause() {
+      this.pauseCalls += 1
+    },
+    play() {
+      this.playCalls += 1
+      return Promise.resolve()
+    },
+    fireEnded() {
+      this.endedHandlers.slice().forEach((handler) => handler({ target: this }))
+    },
+  }
+  environment.audioElement = audioElement
   const dc = {
     getLoopBuffers() {
       return [buffers.primaryVideo, buffers.primaryAudio, buffers.secondaryVideo, buffers.secondaryAudio]
@@ -193,10 +228,20 @@ function createEnvironment() {
     mediaSources: {},
   }
   const target = {
+    Blob: function (parts, options) {
+      const record = { options: options || {}, parts: parts }
+      environment.blobs.push(record)
+      return record
+    },
     MediaSource: function () { return new MediaSourceMock(environment) },
     Promise,
     TYRANO: { kag: { dc } },
     URL: {
+      createObjectURL() {
+        const url = 'blob:mock-' + (++environment.nextUrl)
+        environment.objectUrls.push(url)
+        return url
+      },
       revokeObjectURL(url) { environment.revokedUrls.push(url) },
     },
     clearTimeout(id) { environment.timers.delete(id) },
@@ -219,6 +264,19 @@ function createEnvironment() {
       environment.timers.set(id, { delay, due: environment.now + delay, handler })
       return id
     },
+    document: {
+      body: {
+        appendChild(node) { node.parentNode = this },
+        removeChild(node) { node.parentNode = null },
+      },
+      createElement(tag) {
+        return tag === 'audio' ? audioElement : {}
+      },
+      documentElement: { appendChild() {} },
+    },
+  }
+  target.MediaSource.isTypeSupported = function (type) {
+    return environment.audioMseSupported !== false
   }
   target.window = target
   environment.buffers = buffers
@@ -238,11 +296,24 @@ function createEnvironment() {
 function createVideo(url) {
   return {
     currentSrc: '',
+    loadCalls: 0,
+    pauseCalls: 0,
     playCalls: 0,
+    removedAttrs: [],
     src: url || '',
+    volume: 1,
+    load() {
+      this.loadCalls += 1
+    },
+    pause() {
+      this.pauseCalls += 1
+    },
     play() {
       this.playCalls += 1
       return Promise.resolve()
+    },
+    removeAttribute(name) {
+      this.removedAttrs.push(name)
     },
   }
 }
@@ -312,6 +383,9 @@ async function testSerialAppendAndTeardown() {
   assert.equal(environment.dc.mediaSources.title, undefined)
   assert.equal(environment.dc.__dcTitleLoopQueuePatch.states.title, undefined)
   assert.deepEqual(environment.revokedUrls, ['blob:title-one'])
+  assert.ok(video.pauseCalls >= 1)
+  assert.deepEqual(video.removedAttrs, ['src'])
+  assert.ok(video.loadCalls >= 1)
   assert.equal(environment.concurrentAppendAttempts, 0)
 }
 
@@ -377,6 +451,131 @@ async function testSourceBufferErrorCleansUp() {
   assert.deepEqual(environment.revokedUrls, ['blob:title-buffer-error'])
 }
 
+async function testAudioMseUnsupportedDegradesToVideoOnly() {
+  const environment = createEnvironment()
+  environment.audioMseSupported = false
+  const video = createVideo('blob:title-video-only')
+  const mediaSource = environment.dc.setUpMediaSourceForLoop(video, 'title')
+  mediaSource.open()
+  await drainMicrotasks()
+
+  assert.equal(mediaSource.sourceBuffers.length, 1)
+  assert.equal(mediaSource.sourceBuffers[0].type, 'video/mp4; codecs="avc1.640028"')
+  assert.equal(environment.warnings.length, 1)
+  assert.match(environment.warnings[0], /audio\/mpeg MSE is not supported/)
+
+  const videoBuffer = mediaSource.sourceBuffers[0]
+  assert.deepEqual(videoBuffer.appendCalls, ['video-primary'])
+  videoBuffer.finishAppend()
+  await drainMicrotasks()
+  assert.deepEqual(videoBuffer.appendCalls, ['video-primary', 'video-loop'])
+  videoBuffer.finishAppend()
+  await drainMicrotasks()
+  assert.equal(video.playCalls, 1)
+  assert.ok(environment.dc.loopTimers.title_v)
+  assert.equal(environment.dc.loopTimers.title_a, undefined)
+
+  // 降级警告不应占用真实失败告警通道
+  environment.throwOnNextAppend = true
+  environment.runTimer(environment.dc.loopTimers.title_v)
+  await drainMicrotasks()
+  assert.equal(environment.warnings.length, 2)
+  assert.match(environment.warnings[1], /Forced append failure/)
+  assert.equal(environment.dc.mediaSources.title, undefined)
+  assert.equal(environment.timers.size, 0)
+  assert.deepEqual(environment.revokedUrls, ['blob:title-video-only', 'blob:mock-1', 'blob:mock-2'])
+}
+
+async function testAudioMseProbeMissingDegradesToVideoOnly() {
+  const environment = createEnvironment()
+  environment.target.MediaSource.isTypeSupported = undefined
+  const video = createVideo('blob:title-no-probe')
+  const mediaSource = environment.dc.setUpMediaSourceForLoop(video, 'title')
+  mediaSource.open()
+  await drainMicrotasks()
+
+  assert.equal(mediaSource.sourceBuffers.length, 1)
+  assert.equal(environment.warnings.length, 1)
+  assert.match(environment.warnings[0], /audio\/mpeg MSE is not supported/)
+  assert.equal(environment.dc.loopTimers.title_a, undefined)
+  assert.equal(environment.dc.tearDownMediaSourceForLoop('title'), true)
+}
+
+async function testAudioSourceBufferThrowDegradesToVideoOnly() {
+  const environment = createEnvironment()
+  environment.throwOnAudioSourceBuffer = true
+  const video = createVideo('blob:title-audio-throw')
+  const mediaSource = environment.dc.setUpMediaSourceForLoop(video, 'title')
+  mediaSource.open()
+  await drainMicrotasks()
+
+  assert.equal(mediaSource.sourceBuffers.length, 1)
+  assert.equal(environment.warnings.length, 1)
+  assert.match(environment.warnings[0], /SourceBuffer is not supported/)
+
+  const videoBuffer = mediaSource.sourceBuffers[0]
+  videoBuffer.finishAppend()
+  await drainMicrotasks()
+  videoBuffer.finishAppend()
+  await drainMicrotasks()
+  assert.equal(video.playCalls, 1)
+  assert.ok(environment.dc.loopTimers.title_v)
+  assert.equal(environment.dc.loopTimers.title_a, undefined)
+}
+
+async function testAudioMseUnsupportedFallsBackToPlainAudio() {
+  const environment = createEnvironment()
+  environment.audioMseSupported = false
+  const video = createVideo('blob:title-audio-fallback')
+  const mediaSource = environment.dc.setUpMediaSourceForLoop(video, 'title')
+  mediaSource.open()
+  await drainMicrotasks()
+
+  assert.equal(mediaSource.sourceBuffers.length, 1)
+  assert.equal(environment.warnings.length, 1)
+  assert.match(environment.warnings[0], /audio\/mpeg MSE is not supported/)
+
+  const videoBuffer = mediaSource.sourceBuffers[0]
+  videoBuffer.finishAppend()
+  await drainMicrotasks()
+  videoBuffer.finishAppend()
+  await drainMicrotasks()
+  assert.equal(video.playCalls, 1)
+
+  const audio = environment.audioElement
+  assert.ok(audio, 'plain audio fallback should exist')
+  assert.ok(audio.playCalls >= 1, 'fallback audio should start with the video')
+  assert.equal(audio.src, 'blob:mock-1')
+  assert.equal(audio.loop, false)
+  assert.equal(audio.volume, 1)
+  assert.ok(environment.dc.loopTimers.title_v)
+  assert.equal(environment.dc.loopTimers.title_a, undefined)
+
+  const states = environment.dc.__dcTitleLoopQueuePatch.states
+  assert.ok(states.title.volumeSyncTimer, 'fallback audio should run a volume sync timer')
+  video.volume = 0.4
+  environment.runTimer(states.title.volumeSyncTimer)
+  await drainMicrotasks()
+  assert.equal(audio.volume, 0.4, 'fallback audio should mirror the title video volume')
+
+  video.volume = 1.5
+  environment.runTimer(states.title.volumeSyncTimer)
+  await drainMicrotasks()
+  assert.equal(audio.volume, 1, 'fallback audio volume should stay clamped')
+
+  audio.fireEnded()
+  assert.equal(audio.src, 'blob:mock-2')
+  assert.equal(audio.loop, true)
+  assert.ok(audio.playCalls >= 2)
+
+  assert.equal(environment.dc.tearDownMediaSourceForLoop('title'), true)
+  await drainMicrotasks()
+  assert.equal(audio.parentNode, null)
+  assert.ok(audio.pauseCalls >= 1)
+  assert.deepEqual(environment.revokedUrls, ['blob:title-audio-fallback', 'blob:mock-1', 'blob:mock-2'])
+  assert.equal(environment.timers.size, 0)
+}
+
 async function testStrictProfileTransform() {
   const source = supportedSource()
   let prepared = null
@@ -413,6 +612,10 @@ async function main() {
   await testDuplicateSetupReleasesPreviousInstance()
   await testAppendFailureCleansUp()
   await testSourceBufferErrorCleansUp()
+  await testAudioMseUnsupportedDegradesToVideoOnly()
+  await testAudioMseProbeMissingDegradesToVideoOnly()
+  await testAudioSourceBufferThrowDegradesToVideoOnly()
+  await testAudioMseUnsupportedFallsBackToPlainAudio()
   await testStrictProfileTransform()
   console.log('Title loop profile tests passed')
 }
