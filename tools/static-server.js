@@ -18,6 +18,9 @@ const allowedRootFiles = new Set([
   'favicon.ico',
   'index.html',
   'styles.css',
+  'tools/input-advance.css',
+  'tools/input-advance.html',
+  'tools/input-advance.js',
   'tools/media-compatibility.css',
   'tools/media-compatibility.html',
   'tools/media-compatibility.js'

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>触摸推进诊断 - DevilConnection Modloader web</title>
+    <link rel="icon" href="../favicon.ico" sizes="any" />
+    <link rel="stylesheet" href="./input-advance.css?v=20260817b" />
+    <script defer src="../js/kernel/namespace.js"></script>
+    <script defer src="../js/kernel/tyrano-jump-guard.js?v=20260817a"></script>
+    <script defer src="./input-advance.js?v=20260817b"></script>
+  </head>
+  <body>
+    <header class="tool-header">
+      <div>
+        <p class="tool-kicker">DevilConnection / Input Diagnostics</p>
+        <h1>触摸推进诊断</h1>
+      </div>
+      <p id="environment" class="environment"></p>
+    </header>
+
+    <main>
+      <section class="probe-band" aria-labelledby="probe-title">
+        <div class="probe-heading">
+          <div>
+            <h2 id="probe-title">异步 jump 输入窗口</h2>
+            <p id="mode-detail">保留原始异步 jump，不启用 strong stop 保护</p>
+          </div>
+          <fieldset id="guard-mode" class="mode-switch">
+            <legend>保护模式</legend>
+            <label>
+              <input type="radio" name="guard-mode" value="unguarded" checked />
+              <span>未保护</span>
+            </label>
+            <label>
+              <input type="radio" name="guard-mode" value="host-guard" />
+              <span>Host Guard</span>
+            </label>
+          </fieldset>
+        </div>
+
+        <button id="input-probe" class="input-probe" type="button">
+          <span class="probe-command">点击 / 触摸</span>
+          <span id="probe-status" class="probe-status">等待一次物理输入</span>
+        </button>
+
+        <div class="actions">
+          <button id="reset-probe" class="button" type="button">重置</button>
+          <button id="export-probe" class="button" type="button" disabled>导出 JSON</button>
+        </div>
+      </section>
+
+      <section class="result-band" aria-labelledby="result-title">
+        <div class="result-heading">
+          <h2 id="result-title">本次结果</h2>
+          <strong id="result-state" class="result-state" data-state="idle">等待输入</strong>
+        </div>
+
+        <div class="metrics" aria-label="推进测试摘要">
+          <div><span>DOM 事件</span><strong id="metric-events">0</strong></div>
+          <div><span>推进请求</span><strong id="metric-requests">0</strong></div>
+          <div><span>强停拦截</span><strong id="metric-blocked">0</strong></div>
+          <div><span>越界执行</span><strong id="metric-fallthrough">0</strong></div>
+        </div>
+
+        <dl class="state-details">
+          <div><dt>当前位置</dt><dd id="current-stage">等待点</dd></div>
+          <div><dt>测试变量</dt><dd id="current-sex">f.seibetu = 1</dd></div>
+          <div><dt>Strong stop</dt><dd id="strong-stop">false</dd></div>
+          <div><dt>jump 回调</dt><dd id="jump-count">0</dd></div>
+          <div><dt>可信 click</dt><dd id="trusted-click-count">0</dd></div>
+          <div><dt>保护实现</dt><dd id="guard-status">未启用</dd></div>
+        </dl>
+      </section>
+
+      <section class="timeline-band" aria-labelledby="timeline-title">
+        <div class="timeline-heading">
+          <h2 id="timeline-title">事件与推进序列</h2>
+          <span id="timeline-count">0 条</span>
+        </div>
+        <div id="event-log" class="event-log" role="log" aria-live="polite" aria-relevant="additions">
+          <p class="empty-log">尚无输入事件</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>本页不读取游戏归档，不访问存档。</span>
+      <span>touchend/tap 与实际 click 分别进入推进计数。</span>
+    </footer>
+  </body>
+</html>

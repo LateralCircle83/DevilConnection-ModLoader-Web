@@ -6,6 +6,7 @@
 
 ### 兼容性调查
 
+- 移动端性别选择异常的通用故障边界位于 Tyrano 的异步 `jump`：标签通过 1ms timer 延后调用 `nextOrderWithLabel()`，但在这段时间内 `is_strong_stop` 仍为 false；触屏适配把同一次物理输入通过 tap/click 路径形成连续 `nextOrder()` 时，第二次推进可先执行 jump 下方的相邻标签。最终 jump 仍会抵达目标，因此后续台词正确，但期间写入的 `f.seibetu` 会保留并使菜单图标错误。桌面鼠标通常只有一次推进，因而很难进入该窗口；关键差异是单次输入送达的推进次数，而不是设备性能。
 - Android Edge 的标题 fragmented MP4 在普通受管 Blob URL 路径中于 `loadedmetadata` 和 `play()` 之前失败，返回 `MEDIA_ERR_SRC_NOT_SUPPORTED` / `PipelineStatus::DEMUXER_ERROR_DETECTED_AAC`，而桌面 Chromium 可直接播放。同一字节复制为独立内存 Blob 后仍复现，排除了 ASAR range、`File.slice()` 高位偏移 backing store、Blob 字节缺失、用户激活和自动播放策略；相同字节经声明 `avc1.640028, mp4a.40.2` 的 `MediaSource` 可取得 metadata。因此将已确认的故障边界记录为 Android Chromium 普通 Blob 媒体输入路径对 fragmented MP4/AAC 的平台兼容性差异；没有 Chromium 上游问题编号前，不进一步断言具体内核提交或平台解码器缺陷。
 - 缺失的迷雾效果统一来自 `kiri2.mp4`。该文件使用普通 `ftyp/moov/mdat` MP4，无法进入只接受 `mvex/moof` 的 MSE 回退；画面是常规 H.264，附带的 AAC-LC 轨经完整解码确认全静音。Tyrano 未处理的 `video.play()` Promise 只负责暴露 `NotSupportedError`，不是自动播放策略失败。
 - Android 逐项媒体扫描进一步确认 `effect.mp4` 存在同类故障：它也是普通 `ftyp/moov/free/mdat` MP4，H.264 画面可完整解码，唯一 AAC-LC 轨的全部解码样本均为零；文件大小为 963,462 字节，SHA-256 为 `0151e07fec302ed5de5998dda6202b5120d7c0c2cc612e90c98640f04055c9bd`。
@@ -21,6 +22,7 @@
 - 模组页面增加“已添加 / 推荐模组”分段视图：推荐目录通过同源静态 `catalog.json` 延迟读取，校验唯一 ID，以及本地直接子级 `.asar` 或受限 GitHub HTTPS 直链，再以浏览器原生下载保存到本地；说明、版本、作者和大小均为可选展示信息，不会把包读入内存、自动导入或改变当前模组计划。已有上游发行的汉化、小剧场、库皮亚、多艾露与工坊包改用外链，开发服务器只暴露清单中仍选择随仓库分发的本地包，根目录和其他 ASAR 保持拒绝。
 - 增加严格版本匹配的第二层 Remodal 兼容补丁：仅在最终 `index.html` 保留已验证的原版 Remodal 依赖、弹窗和按钮结构时注入独立缩放器，将窄屏媒体查询压缩掉的弹窗恢复为游戏坐标中的 700px 设计宽度，再按 Tyrano 当前 `base_scale` 和移动端可视视口等比居中；未知页面覆盖保留原资源并产生可启动警告，不继承未经验证的布局假设。补丁不覆盖 `$.alert` / `$.confirm`，旋转后有一次 250ms 有界再校准，关闭或退出时完整还原 DOM 和 wrapper 样式。
 - 管理器新增“调试”工具目录，以独立标签页打开媒体兼容诊断而不替换当前会话；移动端导航改为三列两行，工具操作在窄屏纵向收拢，避免新增入口造成横向溢出。
+- 调试工具新增触摸推进诊断页：真实记录 probe 收到的 pointer、touch、鼠标与 click 事件，分别将一次 `touchend` 和实际送达的 `click` 计为推进来源，在相同的 1ms jump 模型中对照未保护路径与正式 Host jump guard；报告区分越界、strong-stop 拦截和晚于 jump 的普通推进，并可导出不含游戏内容的 JSON。旧版固定把一次 `touchend` 建模为两次推进的原型已撤销，避免把复现假设误当作设备测量。
 - 增加独立媒体兼容诊断页：按基础包和所选模组的最终覆盖顺序枚举视频，逐项测试 Blob 首帧，并在错误码 4 后按正式运行时顺序尝试保声 MSE 与普通 MP4 仅画面回退；测试全程只保留一个媒体元素和一个临时 URL，可停止并导出不含归档内容的 JSON。维护用 `selftest` 模式会在页面内生成一个有效视频和一个损坏 MP4 的内存 ASAR，验证成功、失败和释放分支。
 - 增加普通 MP4 仅画面兜底：受管 MP4/M4V 首次返回错误码 4 且保声 MSE 不适用或失败后，只对结构完整、非分片、恰有一条 H.264 和一条 AAC 轨的文件生成等长复合 Blob；仅将音频 `trak` 类型替换为 `free`，顶层 box 以范围切片扫描，`moov` 读取上限为 4 MiB，不因大视频复制完整文件。降级时控制台输出包含逻辑路径、VFS 层、codec 和原始错误的警告，失败、换源和退出均释放临时 URL。
 - 严格静音视频 Profile 允许未知模组覆盖委托给运行时：最终来源为 `mod` 且大小或摘要不匹配时记录 `delegated` 而不执行内容转换；精确匹配资源仍应用补丁，未知基础视频则保留原资源并产生可启动警告，后续仍可由原生播放或 Host 的真实错误回退处理。
@@ -75,6 +77,7 @@
 
 ### 修复
 
+- Host Tyrano 适配新增通用异步 jump guard：在当前 jump `start()` 进入原有 1ms timer 前同步设置 `is_strong_stop=true`，让同一输入 burst 中的额外 `nextOrder()` 停在当前索引；原 `nextOrderWithLabel()` 继续负责解闸、场景加载和目标跳转。适配器安装时及模组 hook 完成后的真正启动前都会确认包装，且同步异常会恢复先前状态；不修改 `libs.js`、不全局去重 click/tap，也不依赖 `scene1.ks` 标签排列。
 - 增加严格版本匹配的第二层收藏列表移动端滚动补丁：角色与结局收藏共用的 `#collection_menu` 仅阻止 `touchmove` 继续冒泡，保留 Android Chromium 的原生纵向滚动；不修改 Tyrano 全局禁滚逻辑，未知插件覆盖保留原资源并产生可启动警告。
 - iframe 导航现在只保留最新一笔 `load` 回调；被连续模组调整替换的准备会话进入待释放集合，由最终替换文档载入后统一释放。游戏重新载入会轮换 launch ID/token，并在占位页完成及延迟跳转前复核会话和重载代次，避免连续重载或重载后立即退出时旧回调重新写入 `srcdoc`。
 - 游戏文档的存档实例固定记录所属 `document`，在 `pagehide` 时等待写前日志 flush 后显式关闭 IndexedDB；关闭流程幂等，flush 失败仍关闭旧连接并保留日志供下次恢复。

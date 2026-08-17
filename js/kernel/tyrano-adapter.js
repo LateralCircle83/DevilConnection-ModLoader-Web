@@ -188,6 +188,19 @@
     }, 250)
   }
 
+  function ensureJumpGuard(target, kag, root, reportMissing) {
+    var installed = Boolean(
+      DCWeb.TyranoJumpGuard &&
+      typeof DCWeb.TyranoJumpGuard.install === 'function' &&
+      DCWeb.TyranoJumpGuard.install(kag)
+    )
+    if (root) root.setAttribute('data-dc-jump-guard', installed ? 'installed' : 'unavailable')
+    if (!installed && reportMissing) {
+      target.console.warn('Tyrano jump guard was unavailable; asynchronous jump input protection was not installed')
+    }
+    return installed
+  }
+
   function install(target, vfs, launchId, launchToken) {
     if (target.__dcTyranoCompatInstalled) return
     var $ = target.jQuery
@@ -206,6 +219,7 @@
 
     var root = target.document && target.document.documentElement
     if (root) root.setAttribute('data-dc-launch-id', String(launchId))
+    ensureJumpGuard(target, kag, root, false)
 
     var originalInit = target.TYRANO.init
     var started = false
@@ -234,6 +248,7 @@
       if (!readyPosted) return Promise.reject(new Error('Game start requested before launch prerequisites were ready'))
       started = true
       if (root) root.setAttribute('data-dc-start-gate', 'starting')
+      ensureJumpGuard(target, kag, root, true)
       unlockAudio(target, vfs)
       try {
         target.TYRANO.kag.readyAudio()

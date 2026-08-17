@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
+const staticServer = require('../tools/static-server.js')
 
 const root = path.join(__dirname, '..')
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
@@ -16,6 +17,19 @@ assert.ok(mediaLink, 'media compatibility tool link should exist')
 assert.match(mediaLink[0], /href="\.\/tools\/media-compatibility\.html"/)
 assert.match(mediaLink[0], /target="_blank"/)
 assert.match(mediaLink[0], /rel="noopener"/)
+
+const inputLink = html.match(/<a\s+[\s\S]*?id="open-input-advance"[\s\S]*?>/)
+assert.ok(inputLink, 'input advance tool link should exist')
+assert.match(inputLink[0], /href="\.\/tools\/input-advance\.html"/)
+assert.match(inputLink[0], /target="_blank"/)
+assert.match(inputLink[0], /rel="noopener"/)
+
+;['css', 'html', 'js'].forEach((extension) => {
+  assert.match(
+    staticServer.resolvePublicFile('/tools/input-advance.' + extension),
+    new RegExp('tools[\\\\/]input-advance\\.' + extension + '$'),
+  )
+})
 
 const mobileCss = css.slice(css.indexOf('@media (max-width: 640px)'))
 assert.match(mobileCss, /\.manager-nav\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/)

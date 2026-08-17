@@ -10,6 +10,7 @@ require('../js/kernel/resource-readiness.js')
 window.DCWeb.Runtime = { installJQuery() {} }
 window.DCWeb.TyranoSaveAdapter = { install() {} }
 require('../js/kernel/tyrano-preload-scheduler.js')
+require('../js/kernel/tyrano-jump-guard.js')
 require('../js/kernel/tyrano-adapter.js')
 
 function createDocument() {
@@ -65,9 +66,15 @@ async function main() {
   const imageTag = {
     start(pm) { imageStarts.push(pm.storage) },
   }
+  const jumpTag = {
+    start() { sequence.push('jump') },
+  }
   const kag = {
     dc: {},
-    ftag: { master_tag: { image: imageTag } },
+    ftag: {
+      master_tag: { image: imageTag, jump: jumpTag },
+      nextOrderWithLabel() {},
+    },
     preload(storage, callback) {
       preloadStarts.push(storage)
       preloadCompletions.set(storage, callback)
@@ -75,7 +82,8 @@ async function main() {
     preloadAll() { throw new Error('Original preloadAll should be replaced') },
     registerPreloadCompleteCallback() {},
     readyAudio() { sequence.push('audio') },
-    tag: { image: imageTag },
+    stat: { is_strong_stop: false },
+    tag: { image: imageTag, jump: jumpTag },
     tmp: {},
   }
   const target = {
@@ -105,6 +113,8 @@ async function main() {
 
   window.DCWeb.TyranoAdapter.install(target, vfs, 42, 'launch-token')
   assert.equal(target.TYRANO.resource_concurrency, 4)
+  assert.equal(document.documentElement.getAttribute('data-dc-jump-guard'), 'installed')
+  assert.equal(kag.ftag.master_tag.jump.start.__dcJumpGuard, true)
   kag.ftag.master_tag.image.start.call({ kag }, { folder: 'chara', layer: '0', storage: 'hero.webp' })
   assert.deepEqual(preloadStarts, ['./data/chara/hero.webp'])
   assert.deepEqual(imageStarts, [])
@@ -145,7 +155,11 @@ async function main() {
   assert.equal(document.documentElement.getAttribute('data-dc-start-gate'), 'ready')
   assert.deepEqual(messages, [{ type: 'dc-player-ready', launchId: 42, launchToken: 'launch-token' }])
 
+  const hookJumpStart = function () { sequence.push('hook-jump') }
+  kag.ftag.master_tag.jump.start = hookJumpStart
   const started = target.__dcStartGame()
+  assert.notEqual(kag.ftag.master_tag.jump.start, hookJumpStart)
+  assert.equal(kag.ftag.master_tag.jump.start.__dcJumpGuard, true)
   assert.deepEqual(sequence, ['audio', 'init'])
   assert.deepEqual(messages[1], { type: 'dc-player-started', launchId: 42, launchToken: 'launch-token' })
   await started

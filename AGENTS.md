@@ -74,7 +74,7 @@ The source tree has five top-level responsibility domains. Add files to the narr
 - `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; `player-runtime-controls.js` owns whitelisted synthetic keys and diagnostics snapshot access; compatibility, save, source, recommended-mod catalog, and view modules own their corresponding manager behavior; `app.js` is composition only.
 - `js/vendor/`: third-party libraries retained without application ownership.
 
-Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, and `asset-resolver.js` owns prepared resources and URL lifetime. `resource-readiness.js` owns bounded decode/playability waits and telemetry but must not change video visibility; `media-source-fallback.js` owns strict fragmented-MP4 inspection and one-buffer append but must not create URLs or decide retry policy. `mp4-visual-fallback.js` owns range-based progressive-MP4 structure inspection and construction of an equal-length video-only Blob, but likewise must not create URLs, retry elements, or decide policy. `tyrano-preload-scheduler.js` owns only the transient bounded KAG preload queue. None may become a permanent media cache or a global fetch/XHR/Range interceptor. Adapters do not absorb game-version source transforms.
+Within `js/kernel/`, preserve the existing narrow contracts: `asar-archive.js` only exposes indexed byte ranges, `layered-vfs.js` only resolves ordered content, and `asset-resolver.js` owns prepared resources and URL lifetime. `resource-readiness.js` owns bounded decode/playability waits and telemetry but must not change video visibility; `media-source-fallback.js` owns strict fragmented-MP4 inspection and one-buffer append but must not create URLs or decide retry policy. `mp4-visual-fallback.js` owns range-based progressive-MP4 structure inspection and construction of an equal-length video-only Blob, but likewise must not create URLs, retry elements, or decide policy. `tyrano-preload-scheduler.js` owns only the transient bounded KAG preload queue. `tyrano-jump-guard.js` owns only the asynchronous jump critical section: it sets `is_strong_stop` before the current jump implementation runs and leaves `nextOrderWithLabel()` responsible for clearing it. None may become a permanent media cache or a global fetch/XHR/Range interceptor. Adapters do not absorb game-version source transforms.
 
 Keep behavior in the narrowest owning module. Do not create generic compatibility facades or duplicate module globals.
 
@@ -157,6 +157,8 @@ Because profile transforms see the final mod-overlaid resource, they may constra
 
 Resource readiness and both MP4 recovery paths are Host kernel responsibilities because they repair browser input/presentation contracts independently of one Devil Connection source signature. Do not duplicate them in a profile or expose them as optional mod policy. The `kiri2.mp4` and `effect.mp4` silent-track transforms are still content-specific and remain strict, version-gated profile patches applied before playback. Browser Runtime must not proactively generalize those transforms: its visual-only path is permitted solely after native code 4 and a preserving MediaSource attempt cannot recover the managed resource. Keep game-specific scene order, transition backgrounds, and `movie_with_bg` display timing out of the Host kernel.
 
+The asynchronous Tyrano jump guard is likewise a Host kernel responsibility because it closes the engine-wide interval between a committed `jump` and its delayed `nextOrderWithLabel()` callback. Install it against the current KAG jump tag during adapter setup and ensure it again after mod hooks settle immediately before `TYRANO.init()`, so a later hook replacement is still guarded. Preserve the original jump function, timer, parameters, return value, and `nextOrderWithLabel()` release path; restore the prior strong-stop state if the wrapped start throws synchronously. Do not globally deduplicate touch/click events, rewrite `$.fn.click` / `$.fn.tap`, cancel the timer, add scenario labels, or suppress ordinary post-jump input.
+
 The original Remodal markup and 700px dialog coordinate width are likewise game-version-specific. `devil-connection-remodal.js` may strictly match the final `index.html` and inject a bounded runtime scaler before `</body>` so dialogs follow Tyrano's current `base_scale` and the mobile visual viewport. It must not patch `libs.js`, replace `$.alert` / `$.confirm`, or become a generic Host Remodal adapter. Unknown `index.html` sources remain unchanged and produce a compatibility warning rather than inheriting an unverified layout assumption.
 
 `SessionPreparer` enforces the launch-time crossing order: immutable base-plus-mod VFS, required profile transforms, host browser-resource preparation, then `GameDocument`. Do not reproduce this sequence in `PlayerController`, a profile, or a mod module. Runtime host adapters remain non-optional after iframe bootstrap; mod hooks remain ordered user extensions rather than part of profile preparation.
@@ -211,6 +213,8 @@ node tests\player-controller.test.js
 node tests\console-monitor.test.js
 node tests\player-runtime-controls.test.js
 node tests\player-tools-view.test.js
+node tests\tyrano-jump-guard.test.js
+node tests\input-advance-tool.test.js
 Get-ChildItem js -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
 git diff --check
 git status --short
@@ -223,6 +227,8 @@ For browser-facing changes, serve the repository and verify at desktop and mobil
 ```
 
 For Android media triage, `/tools/media-compatibility.html` may read a user-selected base ASAR plus optional mod ASARs and test the final layered video view one file at a time. It must remain a development-only tool, must not persist or extract selected content, and must release each direct Blob URL, transient MSE URL, or transient visual-only URL before advancing. Use `?selftest=1` to exercise one generated playable video and one generated invalid MP4 without selecting game content.
+
+For touch-advance triage, `/tools/input-advance.html` must remain a standalone bounded reproduction that reads no ASAR or save data and records only events delivered to its own probe. A `touchend` contributes one tap advancement and an actually delivered `click` contributes one separate advancement; never hard-code a duplicate result. Its protected mode must use the same `TyranoJumpGuard` module as the game adapter, while the unprotected mode retains the original 1ms jump boundary for comparison.
 
 Minimum browser checks:
 

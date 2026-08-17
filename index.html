@@ -32,8 +32,9 @@
     <script defer src="./js/kernel/browser-api.js?v=20260816a"></script>
     <script defer src="./js/kernel/tyrano-save-adapter.js"></script>
     <script defer src="./js/kernel/tyrano-preload-scheduler.js?v=20260814a"></script>
+    <script defer src="./js/kernel/tyrano-jump-guard.js?v=20260817a"></script>
     <script defer src="./js/mods/mod-runtime.js?v=20260812a"></script>
-    <script defer src="./js/kernel/tyrano-adapter.js?v=20260815a"></script>
+    <script defer src="./js/kernel/tyrano-adapter.js?v=20260817a"></script>
     <script defer src="./js/profiles/profile-runner.js?v=20260816a"></script>
     <script defer src="./js/profiles/devil-connection-apng.js?v=20260816a"></script>
     <script defer src="./js/profiles/devil-connection-silent-videos.js?v=20260816a"></script>
@@ -432,6 +433,27 @@
                 target="_blank"
                 rel="noopener"
                 aria-label="在新标签页打开媒体兼容诊断"
+              >
+                <span>打开</span>
+                <span aria-hidden="true">&#8599;</span>
+              </a>
+            </article>
+            <article class="debug-tool-item" role="listitem">
+              <span class="debug-tool-index" aria-hidden="true">02</span>
+              <div class="debug-tool-content">
+                <div class="debug-tool-title-line">
+                  <h2>触摸推进诊断</h2>
+                  <span class="debug-tool-scope">TOUCH / CLICK / JUMP</span>
+                </div>
+                <p>测量一次输入实际送达的推进次数，并对照 Host jump guard 的拦截结果。</p>
+              </div>
+              <a
+                id="open-input-advance"
+                class="debug-tool-open"
+                href="./tools/input-advance.html"
+                target="_blank"
+                rel="noopener"
+                aria-label="在新标签页打开触摸推进诊断"
               >
                 <span>打开</span>
                 <span aria-hidden="true">&#8599;</span>
