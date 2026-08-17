@@ -17,10 +17,12 @@
 
 ## 暂缓
 
+- [ ] **`link` 标签触屏双跳**：引擎 `link` 直接调用 `nextOrderWithLabel` 并同时绑定 `click touchstart`，一次触摸会跳转两次，且不经过 `jump` 标签、不受 jump guard 覆盖。本作剧情 `[link]` 用量为 0，现有推荐模组也未使用；只有未来启用 `[link]` 时才按 jump guard 思路做有界包装，不引入全局 click/tap 去重。
 - [ ] **WAAPI 资源错误处理**：先确认当前运行时是否仍会因 XHR 或解码失败让 `isLoading` 永久不归零，再设计有超时和失败状态的实现。
 
 ## 明确不引入
 
+- 为 skip 型延迟推进加保护：`r`（5 ms）、text 完成后的 skipSpeed、camera 完成后的 300 ms、image/freeimage 淡入回调、`savesnap` 截图回调都会在 `is_strong_stop=false` 时延迟 `nextOrder()`，但只会多跳一两个标签、不会改变执行位置到另一分支，也没有持久副作用标签，不满足修复优先级。
 - 全局永久 Howl 音频缓存：会让长流程内存持续增长。
 - 全量资源预取或无上限加载队列：与按需读取 ASAR 的目标冲突。
 - 未复现字体阻塞时全局注入 `font-display: swap`：可能重新引入字体闪烁；若只是体验偏好，应由可选模组或设置负责。

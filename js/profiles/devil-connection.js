@@ -48,6 +48,8 @@
       DCWeb.DevilConnectionRemodalPatch,
       DCWeb.DevilConnectionCollectionScrollPatch,
       DCWeb.DevilConnectionTitleLoopPatch,
+      DCWeb.DevilConnectionMovieWithBgPatch,
+      DCWeb.DevilConnectionMoviePatch,
     ],
     parseGameTitle: parseGameTitle,
     readTitle: readTitle,

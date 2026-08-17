@@ -11,6 +11,7 @@ require('../js/profiles/devil-connection-silent-videos.js')
 require('../js/profiles/devil-connection-remodal.js')
 require('../js/profiles/devil-connection-collection-scroll.js')
 require('../js/profiles/devil-connection-title-loop.js')
+require('../js/profiles/devil-connection-foreground-movies.js')
 require('../js/profiles/devil-connection.js')
 
 const profile = window.DCWeb.DevilConnectionProfile
@@ -50,6 +51,10 @@ assert.equal(profile.patches[4].id, 'devil-connection-collection-mobile-scroll')
 assert.equal(profile.patches[4].target, 'data/others/plugin/collection_menu/main.js')
 assert.equal(profile.patches[5].id, 'devil-connection-title-loop-sourcebuffer-queue')
 assert.equal(profile.patches[5].target, 'data/others/plugin/title_loop/main.js')
+assert.equal(profile.patches[6].id, 'devil-connection-movie-with-bg-input-lock')
+assert.equal(profile.patches[6].target, 'data/others/plugin/movie_with_bg/movie_with_bg.js')
+assert.equal(profile.patches[7].id, 'devil-connection-movie-input-lock')
+assert.equal(profile.patches[7].target, 'tyrano/plugins/kag/kag.tag_ext.js')
 
 async function testApngPatch() {
   let prepared = null

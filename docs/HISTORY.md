@@ -7,6 +7,7 @@
 ### 兼容性调查
 
 - 移动端性别选择异常的通用故障边界位于 Tyrano 的异步 `jump`：标签通过 1ms timer 延后调用 `nextOrderWithLabel()`，但在这段时间内 `is_strong_stop` 仍为 false；触屏适配把同一次物理输入通过 tap/click 路径形成连续 `nextOrder()` 时，第二次推进可先执行 jump 下方的相邻标签。最终 jump 仍会抵达目标，因此后续台词正确，但期间写入的 `f.seibetu` 会保留并使菜单图标错误。桌面鼠标通常只有一次推进，因而很难进入该窗口；关键差异是单次输入送达的推进次数，而不是设备性能。
+- 对跨文件 `jump` / `call` 的异步 `loadScenario` 窗口做静态审计与真机连点核查：`nextOrderWithLabel` / `nextOrderWithIndex` 会在加载前清 `is_strong_stop` 并隐藏事件层，但该窗口没有复现二次推进。原因分层成立：加载期间唯一的点击推进入口 `.layer_event_click` 因事件层隐藏而收不到输入；free 层 glink / button / clickable 都要求 `is_strong_stop` 为真或受 `button_clicked` 去重，而加载期 strong stop 已复位；本作不存在 fix 层跨文件 glink，无法绕过门控；标题到第一章的跨文件跳转为自动触发，触发前按钮已随 `[free layer="fix" name="title_menu"]` 移除；读档与 backlog 恢复的存档槽位于菜单层、不经过事件层冒泡，且首次点击后菜单立即隐藏并清空。结论是 jump guard 修复的 1ms 窗口是引擎内唯一同时满足“strong stop 为 false 且事件层可见”的推进间隙。
 - Android Edge 的标题 fragmented MP4 在普通受管 Blob URL 路径中于 `loadedmetadata` 和 `play()` 之前失败，返回 `MEDIA_ERR_SRC_NOT_SUPPORTED` / `PipelineStatus::DEMUXER_ERROR_DETECTED_AAC`，而桌面 Chromium 可直接播放。同一字节复制为独立内存 Blob 后仍复现，排除了 ASAR range、`File.slice()` 高位偏移 backing store、Blob 字节缺失、用户激活和自动播放策略；相同字节经声明 `avc1.640028, mp4a.40.2` 的 `MediaSource` 可取得 metadata。因此将已确认的故障边界记录为 Android Chromium 普通 Blob 媒体输入路径对 fragmented MP4/AAC 的平台兼容性差异；没有 Chromium 上游问题编号前，不进一步断言具体内核提交或平台解码器缺陷。
 - 缺失的迷雾效果统一来自 `kiri2.mp4`。该文件使用普通 `ftyp/moov/mdat` MP4，无法进入只接受 `mvex/moof` 的 MSE 回退；画面是常规 H.264，附带的 AAC-LC 轨经完整解码确认全静音。Tyrano 未处理的 `video.play()` Promise 只负责暴露 `NotSupportedError`，不是自动播放策略失败。
 - Android 逐项媒体扫描进一步确认 `effect.mp4` 存在同类故障：它也是普通 `ftyp/moov/free/mdat` MP4，H.264 画面可完整解码，唯一 AAC-LC 轨的全部解码样本均为零；文件大小为 963,462 字节，SHA-256 为 `0151e07fec302ed5de5998dda6202b5120d7c0c2cc612e90c98640f04055c9bd`。
@@ -77,6 +78,7 @@
 
 ### 修复
 
+- 为移动端前景电影建立标签级输入锁：严格匹配的自定义 `[movie_with_bg]` 与 Tyrano 内置 `[movie]` 在标签开始即隐藏事件层（引擎 `hideEventLayer` 会同步置 `is_stop`），关闭“标签开始到 `canplay`”之间的提前点击窗口；所有完成路径统一汇入幂等 `finish()`，移除视频、恢复事件层并恰好推进一次，`skip` 与 `ended` 不再重复推进。背景电影（`bgmode`）保留原事件层行为，桌面分支不受影响；未知源码或模组覆盖保持原资源并产生可启动警告。
 - Host Tyrano 适配新增通用异步 jump guard：在当前 jump `start()` 进入原有 1ms timer 前同步设置 `is_strong_stop=true`，让同一输入 burst 中的额外 `nextOrder()` 停在当前索引；原 `nextOrderWithLabel()` 继续负责解闸、场景加载和目标跳转。适配器安装时及模组 hook 完成后的真正启动前都会确认包装，且同步异常会恢复先前状态；不修改 `libs.js`、不全局去重 click/tap，也不依赖 `scene1.ks` 标签排列。
 - 增加严格版本匹配的第二层收藏列表移动端滚动补丁：角色与结局收藏共用的 `#collection_menu` 仅阻止 `touchmove` 继续冒泡，保留 Android Chromium 的原生纵向滚动；不修改 Tyrano 全局禁滚逻辑，未知插件覆盖保留原资源并产生可启动警告。
 - iframe 导航现在只保留最新一笔 `load` 回调；被连续模组调整替换的准备会话进入待释放集合，由最终替换文档载入后统一释放。游戏重新载入会轮换 launch ID/token，并在占位页完成及延迟跳转前复核会话和重载代次，避免连续重载或重载后立即退出时旧回调重新写入 `srcdoc`。
