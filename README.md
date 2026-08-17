@@ -81,6 +81,8 @@ Web 壳会在 Tyrano 执行异步 `jump` 时暂时阻止新的剧情推进，并
 
 移动端播放前景电影（`[movie_with_bg]` 与 Tyrano 内置 `[movie]`）时，Web 壳会在标签开始到视频结束之间锁定剧情推进，阻止就绪前的点击提前跳过视频；跳过或自然结束都只推进一次，后台电影（`[bgmovie]`）保持原有时序。
 
+针对 Safari 与 iOS 浏览器，Web 壳会关闭旧版 Tyrano 按浏览器标识把 `.ogg` 改写为 `.m4a` 的逻辑，直接使用归档中实际存在的 OGG 音频；现代 Safari/iOS 可直接播放 Vorbis。
+
 ## 存档
 
 存档默认保存在浏览器的 IndexedDB 中；如果 IndexedDB 不可用，程序会尝试使用 localStorage。

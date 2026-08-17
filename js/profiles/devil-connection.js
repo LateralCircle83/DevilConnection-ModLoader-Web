@@ -50,6 +50,7 @@
       DCWeb.DevilConnectionTitleLoopPatch,
       DCWeb.DevilConnectionMovieWithBgPatch,
       DCWeb.DevilConnectionMoviePatch,
+      DCWeb.DevilConnectionAudioOggPatch,
     ],
     parseGameTitle: parseGameTitle,
     readTitle: readTitle,

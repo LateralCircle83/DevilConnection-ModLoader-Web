@@ -69,7 +69,7 @@ Only the latest iframe navigation may retain a pending `load` callback. Supersed
 The source tree has five top-level responsibility domains. Add files to the narrowest existing domain; do not recreate one-folder-per-primitive layout.
 
 - `js/kernel/`: non-optional browser host infrastructure. It owns the namespace, resource paths, read-only ASAR access, layered VFS, object URLs, CSS preparation, resource rewriting, decoded-image/playable-video readiness, bounded fragmented-MP4 recovery, last-resort progressive-MP4 visual recovery, bounded iframe console monitoring, browser runtime, Electron/Tyrano adapters, IndexedDB save storage, and iframe document construction.
-- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-silent-videos.js` owns the exact-version silent-track transforms, `devil-connection-remodal.js` owns the exact-version Remodal layout transform, `devil-connection-collection-scroll.js` owns the exact-version collection touch-scroll boundary, `devil-connection-foreground-movies.js` owns the exact-version foreground movie input locks, and `devil-connection.js` owns game identity, title reading, and the patch list.
+- `js/profiles/`: game-specific required compatibility. `profile-runner.js` executes declared text or bounded binary patches, `devil-connection-apng.js` owns the APNG transform, `devil-connection-silent-videos.js` owns the exact-version silent-track transforms, `devil-connection-remodal.js` owns the exact-version Remodal layout transform, `devil-connection-collection-scroll.js` owns the exact-version collection touch-scroll boundary, `devil-connection-foreground-movies.js` owns the exact-version foreground movie input locks, `devil-connection-audio-ogg.js` owns the exact-version Safari/WebKit OGG format gate, and `devil-connection.js` owns game identity, title reading, and the patch list.
 - `js/mods/`: DCML package, ordering, hook, and configuration compatibility. Later enabled VFS layers win, but hooks execute individually in UI order.
 - `js/shell/`: manager UI and orchestration. `session-preparer.js` is the only launch-time crossing point; `player-controller.js` owns session lifetime; `player-runtime-controls.js` owns whitelisted synthetic keys and diagnostics snapshot access; compatibility, save, source, recommended-mod catalog, and view modules own their corresponding manager behavior; `app.js` is composition only.
 - `js/vendor/`: third-party libraries retained without application ownership.
@@ -197,6 +197,7 @@ node tests\mod-config-controller.test.js
 node tests\game-profile.test.js
 node tests\kiri-video.test.js
 node tests\foreground-movies-profile.test.js
+node tests\audio-ogg-profile.test.js
 node tests\browser-save-store.test.js
 node tests\save-manager.test.js
 node tests\save-manager-controller.test.js
