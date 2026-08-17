@@ -201,6 +201,18 @@
     return installed
   }
 
+  function installSmartButtonStyle(target, root) {
+    var doc = target.document
+    if (!doc || typeof doc.createElement !== 'function') return false
+    var style = doc.createElement('style')
+    style.type = 'text/css'
+    style.setAttribute('data-dc-smart-buttons', 'hidden')
+    style.textContent = 'div:has(.area_save_list) .button_smart { display: none !important; }'
+    ;(doc.head || doc.documentElement).appendChild(style)
+    if (root) root.setAttribute('data-dc-smart-buttons', 'hidden')
+    return true
+  }
+
   function install(target, vfs, launchId, launchToken) {
     if (target.__dcTyranoCompatInstalled) return
     var $ = target.jQuery
@@ -219,6 +231,7 @@
 
     var root = target.document && target.document.documentElement
     if (root) root.setAttribute('data-dc-launch-id', String(launchId))
+    installSmartButtonStyle(target, root)
     ensureJumpGuard(target, kag, root, false)
 
     var originalInit = target.TYRANO.init

@@ -78,6 +78,7 @@
 
 ### 修复
 
+- 移动端存档/读取界面不再显示游戏自带的 `.button_smart` 滚动箭头：Host 适配器在 iframe 引导时注入仅作用于存档列表容器（`.area_save_list`）的隐藏规则；桌面端行为不变，回看界面（`.log_body` 滚动按钮）不受影响，不修改游戏模板或脚本。
 - Firefox 标题循环兼容：`title_loop` / `bg_loop` 共用的 MSE 循环在创建音频 `SourceBuffer` 前先探测 `MediaSource.isTypeSupported('audio/mpeg')`，Firefox 不支持时降级为仅视频 MSE，并用普通 `<audio>` 元素以 Blob URL 播放标题 MP3（主段播完切循环段），音量每 50ms 镜像标题视频元素，设置中 BGM 滑条（写 `sf._system_config_movie_volume`）与退场淡出都会实时跟随；拆除时先暂停并摘除视频 `src` 再关闭 MediaSource，消除 Firefox 的 `NS_ERROR_DOM_MEDIA_CANCELED` / demuxer detached 报错。标题循环音频主段约 95.7 秒、循环段约 80.7 秒。
 - 为 Safari 与 iOS 浏览器关闭旧 Tyrano 按 UA 将 `.ogg` 无条件改写为 `.m4a` 的逻辑：严格匹配 `kag.tag_audio.js`，把改写动作变为 no-op；归档中没有 M4A 时，Safari、iOS Chrome/Edge/Firefox 的 BGM、SE 与语音不再全部请求不存在的文件，直接使用 OGG。未知源码或模组覆盖保持原资源并产生可启动警告。
 - 为移动端前景电影建立标签级输入锁：严格匹配的自定义 `[movie_with_bg]` 与 Tyrano 内置 `[movie]` 在标签开始即隐藏事件层（引擎 `hideEventLayer` 会同步置 `is_stop`），关闭“标签开始到 `canplay`”之间的提前点击窗口；所有完成路径统一汇入幂等 `finish()`，移除视频、恢复事件层并恰好推进一次，`skip` 与 `ended` 不再重复推进。背景电影（`bgmode`）保留原事件层行为，桌面分支不受影响；未知源码或模组覆盖保持原资源并产生可启动警告。

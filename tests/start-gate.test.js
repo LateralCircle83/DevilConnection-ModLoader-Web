@@ -16,9 +16,11 @@ require('../js/kernel/tyrano-adapter.js')
 function createDocument() {
   const elements = new Map()
   const attributes = new Map()
+  const styles = []
   const root = {
     appendChild(element) {
       element.parentNode = root
+      if (element.textContent) styles.push(element)
       if (element.id) elements.set(element.id, element)
     },
     setAttribute(name, value) { attributes.set(name, String(value)) },
@@ -33,6 +35,7 @@ function createDocument() {
   return {
     body,
     documentElement: root,
+    styles,
     createElement() {
       const listeners = {}
       return {
@@ -114,7 +117,11 @@ async function main() {
   window.DCWeb.TyranoAdapter.install(target, vfs, 42, 'launch-token')
   assert.equal(target.TYRANO.resource_concurrency, 4)
   assert.equal(document.documentElement.getAttribute('data-dc-jump-guard'), 'installed')
+  assert.equal(document.documentElement.getAttribute('data-dc-smart-buttons'), 'hidden')
   assert.equal(kag.ftag.master_tag.jump.start.__dcJumpGuard, true)
+  const smartButtonStyle = document.styles.map((style) => style.textContent).join('\n')
+  assert.match(smartButtonStyle, /div:has\(\.area_save_list\) \.button_smart/)
+  assert.match(smartButtonStyle, /display:\s*none\s*!important/)
   kag.ftag.master_tag.image.start.call({ kag }, { folder: 'chara', layer: '0', storage: 'hero.webp' })
   assert.deepEqual(preloadStarts, ['./data/chara/hero.webp'])
   assert.deepEqual(imageStarts, [])
