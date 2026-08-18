@@ -10,6 +10,8 @@
 
 ## 需要证据
 
+- [ ] **iOS/WebKit 多 AudioContext 挂起**：游戏在加载时、任何用户手势之前创建三个独立 AudioContext——Howler（`playbgm`/`playse`）、waapi（`[lbgm]`/`[lse]`，剧情共 191/32 处）、popopo（89 处标签）。只有 Howler 自带 `_unlockAudio()`（在 document 绑定一次性 touchstart/touchend/click）；waapi 与 popopo 没有任何 `resume()` 或解锁钩子，而 iOS Safari 上无手势创建的 AudioContext 保持 `suspended` 且不会自动恢复，这些声音会永久静音。壳的启动解锁只 resume `Howler.ctx`，且经 postMessage 调用不构成 iframe 内用户手势，iOS 上可能连 Howler 都要等游戏内首次点击兜底。待真机/WebKit 验证（UA 欺骗无效）后，在 Host 适配器内一次性监听 iframe 的 pointerdown/touchend/keydown 并 resume 所有已知 AudioContext（含 waapi、popopo）；`kag.tmp.audio_context` 创建后无人使用，不纳入。
+- [ ] **标题循环 WebKit sequence 模式验证**：标题循环依赖 `SourceBuffer.mode='sequence'` + `timestampOffset` + `appendWindowStart/End` 的组合（MP3 无片段时间戳，无法改用 segments 模式），WebKit Bug 157539 记录过该组合的 MSE 行为偏差；Firefox/Chromium 实测正常，Safari 需真机确认循环音画同步与无声场景。
 - [ ] **Android 资源压力诊断**：基于 `HISTORY.md` 已记录的资源规模调查，通过调试工具和真机开发者工具测量分类对象 URL 峰值、模组文本总量、APNG 生命周期和长 BGM 切换后的 AudioBuffer 回收。取得运行数据后再决定是否调整软提示或引入可选性能策略；在此之前不增加硬限制、永久缓存或可能撤销仍被引用资源的 LRU。
 - [ ] **截图与相册可靠收敛**：先复现截图失败、页面克隆和相册删除问题，再合并处理 `snapSave` 单次结束、无缩略图存档、html2canvas `onclone` 克隆隔离，以及删除记录后的孤立图片数据；优先包装稳定接口，只能依赖源码结构时才进入版本 Profile。
 - [ ] **移动端输入提交复位**：执行 Tyrano `[commit]` 后立即并在下一帧再次复位 `#tyrano_base` 滚动位置；先在真实移动浏览器复现输入法导致的画面偏移。
