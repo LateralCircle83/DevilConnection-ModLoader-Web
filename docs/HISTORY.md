@@ -83,7 +83,7 @@
 - 为 Safari 与 iOS 浏览器关闭旧 Tyrano 按 UA 将 `.ogg` 无条件改写为 `.m4a` 的逻辑：严格匹配 `kag.tag_audio.js`，把改写动作变为 no-op；归档中没有 M4A 时，Safari、iOS Chrome/Edge/Firefox 的 BGM、SE 与语音不再全部请求不存在的文件，直接使用 OGG。未知源码或模组覆盖保持原资源并产生可启动警告。
 - 为移动端前景电影建立标签级输入锁：严格匹配的自定义 `[movie_with_bg]` 与 Tyrano 内置 `[movie]` 在标签开始即隐藏事件层（引擎 `hideEventLayer` 会同步置 `is_stop`），关闭“标签开始到 `canplay`”之间的提前点击窗口；所有完成路径统一汇入幂等 `finish()`，移除视频、恢复事件层并恰好推进一次，`skip` 与 `ended` 不再重复推进。背景电影（`bgmode`）保留原事件层行为，桌面分支不受影响；未知源码或模组覆盖保持原资源并产生可启动警告。
 - Host Tyrano 适配新增通用异步 jump guard：在当前 jump `start()` 进入原有 1ms timer 前同步设置 `is_strong_stop=true`，让同一输入 burst 中的额外 `nextOrder()` 停在当前索引；原 `nextOrderWithLabel()` 继续负责解闸、场景加载和目标跳转。适配器安装时及模组 hook 完成后的真正启动前都会确认包装，且同步异常会恢复先前状态；不修改 `libs.js`、不全局去重 click/tap，也不依赖 `scene1.ks` 标签排列。
-- Host Tyrano 适配新增事件层推进去重：KAG 初始化完成后只移除 body 级 `.layer_event_click` 克隆上重复的 `tap` 推进绑定，使一次 touchend 恰好推进一次；letterbox 点击仍经游戏自身集合触发命中游戏内事件层，不替换全局 tap 多边形、不合并 click/tap，也不修改按钮/选项/热区绑定。
+- Host Tyrano 适配新增事件层推进去重与点击特效时序修复：KAG 初始化完成后只移除 body 级 `.layer_event_click` 克隆上重复的 `tap` 推进绑定，使一次 touchend 恰好推进一次；并在事件层绑定前应用游戏自身最终版本的 tap 多边形（不 `preventDefault`、不掐 touchstart 冒泡），使对话推进点击恢复 tap_effect 波纹。letterbox 点击仍经游戏自身集合触发命中游戏内事件层，不合并 click/tap，也不修改按钮/选项/热区绑定。
 - 增加严格版本匹配的第二层收藏列表移动端滚动补丁：角色与结局收藏共用的 `#collection_menu` 仅阻止 `touchmove` 继续冒泡，保留 Android Chromium 的原生纵向滚动；不修改 Tyrano 全局禁滚逻辑，未知插件覆盖保留原资源并产生可启动警告。
 - iframe 导航现在只保留最新一笔 `load` 回调；被连续模组调整替换的准备会话进入待释放集合，由最终替换文档载入后统一释放。游戏重新载入会轮换 launch ID/token，并在占位页完成及延迟跳转前复核会话和重载代次，避免连续重载或重载后立即退出时旧回调重新写入 `srcdoc`。
 - 游戏文档的存档实例固定记录所属 `document`，在 `pagehide` 时等待写前日志 flush 后显式关闭 IndexedDB；关闭流程幂等，flush 失败仍关闭旧连接并保留日志供下次恢复。

@@ -82,6 +82,7 @@ function createMinimalTarget() {
   }
   function jquery() { return { each() {} } }
   jquery.extend = function (_, target) { return target }
+  jquery.event = {}
   return {
     TYRANO: { init() {}, kag },
     api: { storage: { ready: Promise.resolve() } },
@@ -107,6 +108,7 @@ function testTouchGuardWiredByDefault() {
   assert.equal(root.getAttribute('data-dc-touch-guard'), 'installed')
   assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.jump.start.__dcJumpGuard), true)
   assert.equal(Boolean(target.tyrano.plugin.kag.init_game.__dcEventLayerDedupe), true)
+  assert.equal(Boolean(target.jQuery.event.tap && target.jQuery.event.tap.__dcNoStopTap), true)
 }
 
 async function main() {
