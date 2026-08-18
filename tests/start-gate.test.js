@@ -12,6 +12,8 @@ window.DCWeb.TyranoSaveAdapter = { install() {} }
 require('../js/kernel/tyrano-preload-scheduler.js')
 require('../js/kernel/tyrano-jump-guard.js')
 require('../js/kernel/tyrano-touch-guard.js')
+require('../js/kernel/tyrano-bg-guard.js')
+require('../js/kernel/tyrano-chara-guard.js')
 require('../js/kernel/tyrano-adapter.js')
 
 function createDocument() {
@@ -65,10 +67,13 @@ function createDocument() {
 
 function createMinimalTarget() {
   const document = createDocument()
+  const bgTag = { start() {} }
+  const charaShowTag = { start() {} }
+  const charaModTag = { start() {} }
   const kag = {
     dc: {},
     ftag: {
-      master_tag: { image: { start() {} }, jump: { start() {} } },
+      master_tag: { bg: bgTag, bg2: bgTag, image: { start() {} }, jump: { start() {} } },
       nextOrderWithLabel() {},
     },
     init_game() {},
@@ -77,9 +82,18 @@ function createMinimalTarget() {
     registerPreloadCompleteCallback() {},
     readyAudio() {},
     stat: { is_strong_stop: false },
-    tag: { image: { start() {} }, jump: { start() {} } },
+    tag: {
+      bg: bgTag,
+      bg2: bgTag,
+      chara_mod: charaModTag,
+      chara_show: charaShowTag,
+      image: { start() {} },
+      jump: { start() {} },
+    },
     tmp: {},
   }
+  kag.ftag.master_tag.chara_mod = charaModTag
+  kag.ftag.master_tag.chara_show = charaShowTag
   function jquery() { return { each() {} } }
   jquery.extend = function (_, target) { return target }
   jquery.event = {}
@@ -106,7 +120,11 @@ function testTouchGuardWiredByDefault() {
   const root = target.document.documentElement
   assert.equal(root.getAttribute('data-dc-jump-guard'), 'installed')
   assert.equal(root.getAttribute('data-dc-touch-guard'), 'installed')
+  assert.equal(root.getAttribute('data-dc-bg-guard'), 'installed')
+  assert.equal(root.getAttribute('data-dc-chara-guard'), 'installed')
   assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.jump.start.__dcJumpGuard), true)
+  assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.bg.start.__dcBgLatestWins), true)
+  assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.chara_mod.start.__dcCharaLatestWins), true)
   assert.equal(Boolean(target.tyrano.plugin.kag.init_game.__dcEventLayerDedupe), true)
   assert.equal(Boolean(target.jQuery.event.tap && target.jQuery.event.tap.__dcNoStopTap), true)
 }
@@ -117,6 +135,7 @@ async function main() {
   const preloadCompletions = new Map()
   const preloadStarts = []
   const imageStarts = []
+  const bgApplied = []
   const sequence = []
   let resolveModRuntime
   let resolveStorage
@@ -130,10 +149,22 @@ async function main() {
   const jumpTag = {
     start() { sequence.push('jump') },
   }
+  function makeBgTag() {
+    return {
+      start(pm) {
+        if (String(pm.time) === '0' || Number(pm.time) === 0) pm.wait = 'false'
+        const path = './data/bgimage/' + pm.storage
+        kag.preload(path, function () { bgApplied.push(pm.storage) })
+      },
+    }
+  }
+  const bgTag = makeBgTag()
+  const charaShowTag = { start() {} }
+  const charaModTag = { start() {} }
   const kag = {
     dc: {},
     ftag: {
-      master_tag: { image: imageTag, jump: jumpTag },
+      master_tag: { bg: bgTag, bg2: bgTag, image: imageTag, jump: jumpTag },
       nextOrderWithLabel() {},
     },
     init_game() {},
@@ -145,9 +176,18 @@ async function main() {
     registerPreloadCompleteCallback() {},
     readyAudio() { sequence.push('audio') },
     stat: { is_strong_stop: false },
-    tag: { image: imageTag, jump: jumpTag },
+    tag: {
+      bg: bgTag,
+      bg2: bgTag,
+      chara_mod: charaModTag,
+      chara_show: charaShowTag,
+      image: imageTag,
+      jump: jumpTag,
+    },
     tmp: {},
   }
+  kag.ftag.master_tag.chara_mod = charaModTag
+  kag.ftag.master_tag.chara_show = charaShowTag
   const target = {
     TYRANO: {
       init() { sequence.push('init') },
@@ -177,8 +217,12 @@ async function main() {
   assert.equal(target.TYRANO.resource_concurrency, 4)
   assert.equal(document.documentElement.getAttribute('data-dc-jump-guard'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-touch-guard'), 'installed')
+  assert.equal(document.documentElement.getAttribute('data-dc-bg-guard'), 'installed')
+  assert.equal(document.documentElement.getAttribute('data-dc-chara-guard'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-smart-buttons'), 'hidden')
   assert.equal(kag.ftag.master_tag.jump.start.__dcJumpGuard, true)
+  assert.equal(kag.ftag.master_tag.bg.start.__dcBgLatestWins, true)
+  assert.equal(kag.ftag.master_tag.chara_mod.start.__dcCharaLatestWins, true)
   const smartButtonStyle = document.styles.map((style) => style.textContent).join('\n')
   assert.match(smartButtonStyle, /div:has\(\.area_save_list\) \.button_smart/)
   assert.match(smartButtonStyle, /display:\s*none\s*!important/)
@@ -209,6 +253,16 @@ async function main() {
   assert.equal(preloadsComplete, 1)
   assert.equal(schedulerIdle, 1)
   assert.equal(document.documentElement.getAttribute('data-dc-preload-state'), 'idle')
+
+  kag.ftag.master_tag.bg.start.call(kag.ftag.master_tag.bg, { storage: 'kuro.webp', time: '0' })
+  kag.ftag.master_tag.bg.start.call(kag.ftag.master_tag.bg, { storage: 'haikei2.webp', time: '0' })
+  preloadCompletions.get('./data/bgimage/haikei2.webp')()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(bgApplied, ['haikei2.webp'])
+  preloadCompletions.get('./data/bgimage/kuro.webp')()
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(bgApplied, ['haikei2.webp'])
+
   const ready = target.TYRANO.init()
   assert.deepEqual(sequence, [])
   assert.equal(document.documentElement.getAttribute('data-dc-start-gate'), null)

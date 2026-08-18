@@ -17,11 +17,21 @@
       }, options)
     })
 
+    function guardBgCallback(storage, callback) {
+      if (!DCWeb.TyranoBgGuard || typeof DCWeb.TyranoBgGuard.guardCallback !== 'function') return callback
+      return DCWeb.TyranoBgGuard.guardCallback(kag, storage, callback)
+    }
+
+    function guardCharaCallback(storage, callback) {
+      if (!DCWeb.TyranoCharaGuard || typeof DCWeb.TyranoCharaGuard.guardCallback !== 'function') return callback
+      return DCWeb.TyranoCharaGuard.guardCallback(kag, storage, callback)
+    }
+
     kag.preload = function (storage, callback, options) {
-      return scheduler.preload(storage, callback, options)
+      return scheduler.preload(storage, guardCharaCallback(storage, guardBgCallback(storage, callback)), options)
     }
     kag.preloadAll = function (storage, callback, options) {
-      return scheduler.preload(storage, callback, options)
+      return scheduler.preload(storage, guardCharaCallback(storage, guardBgCallback(storage, callback)), options)
     }
     if (typeof kag.registerPreloadCompleteCallback === 'function') {
       kag.registerPreloadCompleteCallback = function (callback) {
@@ -217,6 +227,32 @@
     return installed
   }
 
+  function ensureBgGuard(target, kag, root, reportMissing) {
+    var installed = Boolean(
+      DCWeb.TyranoBgGuard &&
+      typeof DCWeb.TyranoBgGuard.install === 'function' &&
+      DCWeb.TyranoBgGuard.install(kag)
+    )
+    if (root) root.setAttribute('data-dc-bg-guard', installed ? 'installed' : 'unavailable')
+    if (!installed && reportMissing) {
+      target.console.warn('Tyrano bg guard was unavailable; out-of-order background application was not protected')
+    }
+    return installed
+  }
+
+  function ensureCharaGuard(target, kag, root, reportMissing) {
+    var installed = Boolean(
+      DCWeb.TyranoCharaGuard &&
+      typeof DCWeb.TyranoCharaGuard.install === 'function' &&
+      DCWeb.TyranoCharaGuard.install(kag)
+    )
+    if (root) root.setAttribute('data-dc-chara-guard', installed ? 'installed' : 'unavailable')
+    if (!installed && reportMissing) {
+      target.console.warn('Tyrano chara guard was unavailable; out-of-order character application was not protected')
+    }
+    return installed
+  }
+
   function installSmartButtonStyle(target, root) {
     var doc = target.document
     if (!doc || typeof doc.createElement !== 'function') return false
@@ -248,6 +284,8 @@
     var root = target.document && target.document.documentElement
     if (root) root.setAttribute('data-dc-launch-id', String(launchId))
     installSmartButtonStyle(target, root)
+    ensureBgGuard(target, kag, root, false)
+    ensureCharaGuard(target, kag, root, false)
     ensureJumpGuard(target, kag, root, false)
     ensureTouchGuard(target, root, false)
 
@@ -278,6 +316,8 @@
       if (!readyPosted) return Promise.reject(new Error('Game start requested before launch prerequisites were ready'))
       started = true
       if (root) root.setAttribute('data-dc-start-gate', 'starting')
+      ensureBgGuard(target, kag, root, true)
+      ensureCharaGuard(target, kag, root, true)
       ensureJumpGuard(target, kag, root, true)
       ensureTouchGuard(target, root, true)
       unlockAudio(target, vfs)

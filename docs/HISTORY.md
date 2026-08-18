@@ -6,6 +6,7 @@
 
 ### 兼容性调查
 
+- 变身场景背景卡黑的根因是 `[bg]` 异步应用竞态：标签在 `kag.preload` 回调里写 base 层背景，多个 `time=0` 的 `[bg]` 并发时，最终背景由回调完成顺序决定而非标签顺序。Android 上 `kuro.webp` 冷 blob 加载约 170–200ms，而 `haikei2.webp` 回档后的热缓存请求仅 13–21ms；回档后中间标签（flash_off/playse/bgmovie）变快使两个 preload 重叠，haikei2 先落地、迟到的 kuro 覆盖它，表现为全屏变身视频后背景保持黑底、角色与剧情正常。桌面 blob 加载毫秒级，kuro 总是先完成所以从未触发。同一竞态覆盖全部 730 个 `time=0` 的 `[bg]`/`[bg2]`，实际可重叠的主要是“kuro → 下一个背景”的闪黑恢复 idiom（Chapter3 与 Devil_Hardester 逐字重复同一变身序列）。
 - 移动端性别选择异常的通用故障边界位于 Tyrano 的异步 `jump`：标签通过 1ms timer 延后调用 `nextOrderWithLabel()`，但在这段时间内 `is_strong_stop` 仍为 false；触屏适配把同一次物理输入通过 tap/click 路径形成连续 `nextOrder()` 时，第二次推进可先执行 jump 下方的相邻标签。最终 jump 仍会抵达目标，因此后续台词正确，但期间写入的 `f.seibetu` 会保留并使菜单图标错误。桌面鼠标通常只有一次推进，因而很难进入该窗口；关键差异是单次输入送达的推进次数，而不是设备性能。
 - 对跨文件 `jump` / `call` 的异步 `loadScenario` 窗口做静态审计与真机连点核查：`nextOrderWithLabel` / `nextOrderWithIndex` 会在加载前清 `is_strong_stop` 并隐藏事件层，但该窗口没有复现二次推进。原因分层成立：加载期间唯一的点击推进入口 `.layer_event_click` 因事件层隐藏而收不到输入；free 层 glink / button / clickable 都要求 `is_strong_stop` 为真或受 `button_clicked` 去重，而加载期 strong stop 已复位；本作不存在 fix 层跨文件 glink，无法绕过门控；标题到第一章的跨文件跳转为自动触发，触发前按钮已随 `[free layer="fix" name="title_menu"]` 移除；读档与 backlog 恢复的存档槽位于菜单层、不经过事件层冒泡，且首次点击后菜单立即隐藏并清空。结论是 jump guard 修复的 1ms 窗口是引擎内唯一同时满足“strong stop 为 false 且事件层可见”的推进间隙。
 - Android Edge 的标题 fragmented MP4 在普通受管 Blob URL 路径中于 `loadedmetadata` 和 `play()` 之前失败，返回 `MEDIA_ERR_SRC_NOT_SUPPORTED` / `PipelineStatus::DEMUXER_ERROR_DETECTED_AAC`，而桌面 Chromium 可直接播放。同一字节复制为独立内存 Blob 后仍复现，排除了 ASAR range、`File.slice()` 高位偏移 backing store、Blob 字节缺失、用户激活和自动播放策略；相同字节经声明 `avc1.640028, mp4a.40.2` 的 `MediaSource` 可取得 metadata。因此将已确认的故障边界记录为 Android Chromium 普通 Blob 媒体输入路径对 fragmented MP4/AAC 的平台兼容性差异；没有 Chromium 上游问题编号前，不进一步断言具体内核提交或平台解码器缺陷。
@@ -78,6 +79,8 @@
 
 ### 修复
 
+- Host Tyrano 适配新增背景应用顺序保护：`tyrano-bg-guard.js` 为每个 `[bg]`/`[bg2]` 请求分配单调递增序号，preload 回调落地时若已不是最新请求则丢弃，保证 base 层最终背景始终等于最后请求的存储；`[movie_with_bg]` 在视频 `play` 后 ~100ms 直写背景的迟到写入也纳入同一序号，被更新请求超越时会在 150ms 内纠正回最新背景。`wait=true` 的阻塞回调防御性放行，非背景预加载完全不受影响，不改 CSS 应用本身与 crossfade/wait 语义。适配器安装时及模组 hook 完成后的真正启动前都会确认包装。
+- Host Tyrano 适配新增角色应用顺序保护：`tyrano-chara-guard.js` 按角色名对 `[chara_show]`/`[chara_mod]` 分配独立的 show/mod 序号，preload 回调落地时同名同类型的最新请求才允许应用；show 与 mod 分开计数，较新的 mod 不会取消仍在途的 show（show 负责创建角色元素并读取最新存储），避免 Android 冷热缓存差异导致表情/姿态倒挂。当前游戏数据经审计不存在同名角色显式 `wait=false` 且无阻挡的真实重叠调用，该保护为模组场景的防御性加固。
 - 移动端存档/读取界面不再显示游戏自带的 `.button_smart` 滚动箭头：Host 适配器在 iframe 引导时注入仅作用于存档列表容器（`.area_save_list`）的隐藏规则；桌面端行为不变，回看界面（`.log_body` 滚动按钮）不受影响，不修改游戏模板或脚本。
 - Firefox 标题循环兼容：`title_loop` / `bg_loop` 共用的 MSE 循环在创建音频 `SourceBuffer` 前先探测 `MediaSource.isTypeSupported('audio/mpeg')`，Firefox 不支持时降级为仅视频 MSE，并用普通 `<audio>` 元素以 Blob URL 播放标题 MP3（主段播完切循环段），音量每 50ms 镜像标题视频元素，设置中 BGM 滑条（写 `sf._system_config_movie_volume`）与退场淡出都会实时跟随；拆除时先暂停并摘除视频 `src` 再关闭 MediaSource，消除 Firefox 的 `NS_ERROR_DOM_MEDIA_CANCELED` / demuxer detached 报错。标题循环音频主段约 95.7 秒、循环段约 80.7 秒。
 - 为 Safari 与 iOS 浏览器关闭旧 Tyrano 按 UA 将 `.ogg` 无条件改写为 `.m4a` 的逻辑：严格匹配 `kag.tag_audio.js`，把改写动作变为 no-op；归档中没有 M4A 时，Safari、iOS Chrome/Edge/Firefox 的 BGM、SE 与语音不再全部请求不存在的文件，直接使用 OGG。未知源码或模组覆盖保持原资源并产生可启动警告。
