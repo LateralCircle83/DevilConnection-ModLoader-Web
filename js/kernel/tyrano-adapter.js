@@ -201,6 +201,22 @@
     return installed
   }
 
+  function ensureTouchGuard(target, root, reportMissing) {
+    var installed = Boolean(
+      DCWeb.TyranoTouchGuard &&
+      typeof DCWeb.TyranoTouchGuard.install === 'function' &&
+      DCWeb.TyranoTouchGuard.install(
+        target.tyrano && target.tyrano.plugin && target.tyrano.plugin.kag,
+        target.jQuery
+      )
+    )
+    if (root) root.setAttribute('data-dc-touch-guard', installed ? 'installed' : 'unavailable')
+    if (!installed && reportMissing) {
+      target.console.warn('Tyrano touch guard was unavailable; event-layer double-advance was not deduplicated')
+    }
+    return installed
+  }
+
   function installSmartButtonStyle(target, root) {
     var doc = target.document
     if (!doc || typeof doc.createElement !== 'function') return false
@@ -233,6 +249,7 @@
     if (root) root.setAttribute('data-dc-launch-id', String(launchId))
     installSmartButtonStyle(target, root)
     ensureJumpGuard(target, kag, root, false)
+    ensureTouchGuard(target, root, false)
 
     var originalInit = target.TYRANO.init
     var started = false
@@ -262,6 +279,7 @@
       started = true
       if (root) root.setAttribute('data-dc-start-gate', 'starting')
       ensureJumpGuard(target, kag, root, true)
+      ensureTouchGuard(target, root, true)
       unlockAudio(target, vfs)
       try {
         target.TYRANO.kag.readyAudio()

@@ -11,12 +11,14 @@ window.DCWeb.Runtime = { installJQuery() {} }
 window.DCWeb.TyranoSaveAdapter = { install() {} }
 require('../js/kernel/tyrano-preload-scheduler.js')
 require('../js/kernel/tyrano-jump-guard.js')
+require('../js/kernel/tyrano-touch-guard.js')
 require('../js/kernel/tyrano-adapter.js')
 
 function createDocument() {
   const elements = new Map()
   const attributes = new Map()
   const styles = []
+  const listeners = []
   const root = {
     appendChild(element) {
       element.parentNode = root
@@ -35,6 +37,7 @@ function createDocument() {
   return {
     body,
     documentElement: root,
+    listeners,
     styles,
     createElement() {
       const listeners = {}
@@ -50,7 +53,60 @@ function createDocument() {
       }
     },
     getElementById(id) { return elements.get(id) || null },
+    addEventListener(type, listener, options) {
+      listeners.push({ type, listener, options })
+    },
+    removeEventListener(type, listener) {
+      const index = listeners.findIndex((entry) => entry.type === type && entry.listener === listener)
+      if (index >= 0) listeners.splice(index, 1)
+    },
   }
+}
+
+function createMinimalTarget() {
+  const document = createDocument()
+  const kag = {
+    dc: {},
+    ftag: {
+      master_tag: { image: { start() {} }, jump: { start() {} } },
+      nextOrderWithLabel() {},
+    },
+    init_game() {},
+    preload() {},
+    preloadAll() {},
+    registerPreloadCompleteCallback() {},
+    readyAudio() {},
+    stat: { is_strong_stop: false },
+    tag: { image: { start() {} }, jump: { start() {} } },
+    tmp: {},
+  }
+  function jquery() { return { each() {} } }
+  jquery.extend = function (_, target) { return target }
+  return {
+    TYRANO: { init() {}, kag },
+    api: { storage: { ready: Promise.resolve() } },
+    addEventListener() {},
+    clearTimeout,
+    console,
+    document,
+    jQuery: jquery,
+    navigator: { userActivation: { hasBeenActive: true, isActive: true } },
+    parent: { postMessage() {} },
+    requestAnimationFrame(callback) { callback() },
+    setInterval() { return 1 },
+    setTimeout,
+    tyrano: { plugin: { kag } },
+  }
+}
+
+function testTouchGuardWiredByDefault() {
+  const target = createMinimalTarget()
+  window.DCWeb.TyranoAdapter.install(target, { has() { return false } }, 1, 'token')
+  const root = target.document.documentElement
+  assert.equal(root.getAttribute('data-dc-jump-guard'), 'installed')
+  assert.equal(root.getAttribute('data-dc-touch-guard'), 'installed')
+  assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.jump.start.__dcJumpGuard), true)
+  assert.equal(Boolean(target.tyrano.plugin.kag.init_game.__dcEventLayerDedupe), true)
 }
 
 async function main() {
@@ -78,6 +134,7 @@ async function main() {
       master_tag: { image: imageTag, jump: jumpTag },
       nextOrderWithLabel() {},
     },
+    init_game() {},
     preload(storage, callback) {
       preloadStarts.push(storage)
       preloadCompletions.set(storage, callback)
@@ -117,6 +174,7 @@ async function main() {
   window.DCWeb.TyranoAdapter.install(target, vfs, 42, 'launch-token')
   assert.equal(target.TYRANO.resource_concurrency, 4)
   assert.equal(document.documentElement.getAttribute('data-dc-jump-guard'), 'installed')
+  assert.equal(document.documentElement.getAttribute('data-dc-touch-guard'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-smart-buttons'), 'hidden')
   assert.equal(kag.ftag.master_tag.jump.start.__dcJumpGuard, true)
   const smartButtonStyle = document.styles.map((style) => style.textContent).join('\n')
@@ -179,6 +237,7 @@ async function main() {
   console.log('Start gate tests passed')
 }
 
+testTouchGuardWiredByDefault()
 main().catch(function (error) {
   console.error(error)
   process.exitCode = 1
