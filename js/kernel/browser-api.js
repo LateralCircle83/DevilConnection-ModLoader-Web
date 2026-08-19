@@ -81,6 +81,9 @@
         publishBinaryDebug(path, null)
         var blob
         try {
+          if (typeof vfs.restoreObjectUrls === 'function' && typeof path === 'string') {
+            path = vfs.restoreObjectUrls(path)
+          }
           blob = vfs.getBlob(path)
           if (!blob) throw new Error('ASAR file not found: ' + path)
         } catch (error) {

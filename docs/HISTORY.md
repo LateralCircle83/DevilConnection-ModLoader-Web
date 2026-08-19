@@ -80,6 +80,7 @@
 
 ### 修复
 
+- `window.api.readFileBin` 读取前先经当前会话的 `AssetResolver` 把运行期 Blob URL 还原为编码后的 ASAR 逻辑路径，再执行 VFS 查找；照相机插件从角色 `<img>.src` 反向读取立绘时不再把 Blob URL 当作归档路径，未在注册表登记的未知 Blob 仍按原样报 `ASAR file not found`。
 - Host Tyrano 适配新增背景应用顺序保护：`tyrano-bg-guard.js` 为每个 `[bg]`/`[bg2]` 请求分配单调递增序号，preload 回调落地时若已不是最新请求则丢弃，保证 base 层最终背景始终等于最后请求的存储；`[movie_with_bg]` 在视频 `play` 后 ~100ms 直写背景的迟到写入也纳入同一序号，被更新请求超越时会在 150ms 内纠正回最新背景。`wait=true` 的阻塞回调防御性放行，非背景预加载完全不受影响，不改 CSS 应用本身与 crossfade/wait 语义。适配器安装时及模组 hook 完成后的真正启动前都会确认包装。
 - Host Tyrano 适配新增角色应用顺序保护：`tyrano-chara-guard.js` 按角色名对 `[chara_show]`/`[chara_mod]` 分配独立的 show/mod 序号，preload 回调落地时同名同类型的最新请求才允许应用；show 与 mod 分开计数，较新的 mod 不会取消仍在途的 show（show 负责创建角色元素并读取最新存储），避免 Android 冷热缓存差异导致表情/姿态倒挂。当前游戏数据经审计不存在同名角色显式 `wait=false` 且无阻挡的真实重叠调用，该保护为模组场景的防御性加固。
 - 移动端存档/读取界面不再显示游戏自带的 `.button_smart` 滚动箭头：Host 适配器在 iframe 引导时注入仅作用于存档列表容器（`.area_save_list`）的隐藏规则；桌面端行为不变，回看界面（`.log_body` 滚动按钮）不受影响，不修改游戏模板或脚本。

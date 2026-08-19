@@ -113,10 +113,34 @@ async function testBrowserApiReadsBinaryInTargetRealm() {
   assert.equal(copies, 0)
 }
 
+async function testBrowserApiReadFileBinRestoresObjectUrls() {
+  const target = createTarget(createStorage())
+  const received = []
+  const blobUrl = 'blob:http://127.0.0.1:4173/e70aec86-53b3-4630-aadf-81a9af077546'
+  const api = window.DCWeb.BrowserApi.install(target, {
+    getBlob(path) {
+      received.push(path)
+      return path === 'data/fgimage/chara/2/photo1.png' ? new Blob(['photo bytes']) : null
+    },
+    restoreObjectUrls(value) {
+      return value === blobUrl ? 'data/fgimage/chara/2/photo1.png' : value
+    },
+  }, 'token')
+
+  const value = await api.readFileBin(blobUrl)
+  assert.equal(Buffer.from(value).toString(), 'photo bytes')
+  assert.deepEqual(received, ['data/fgimage/chara/2/photo1.png'])
+
+  const unknownBlob = 'blob:http://127.0.0.1:4173/not-in-registry'
+  await assert.rejects(api.readFileBin(unknownBlob), /ASAR file not found/)
+  assert.deepEqual(received, ['data/fgimage/chara/2/photo1.png', unknownBlob])
+}
+
 async function main() {
   testPathMapping()
   testBrowserApiSharesConfigStorage()
   await testBrowserApiReadsBinaryInTargetRealm()
+  await testBrowserApiReadFileBinRestoresObjectUrls()
   console.log('Mod config tests passed')
 }
 
