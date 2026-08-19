@@ -51,6 +51,8 @@
       DCWeb.DevilConnectionMovieWithBgPatch,
       DCWeb.DevilConnectionMoviePatch,
       DCWeb.DevilConnectionAudioOggPatch,
+      DCWeb.DevilConnectionNeoTapPatch,
+      DCWeb.DevilConnectionYumeKupyaTapPatch,
     ],
     parseGameTitle: parseGameTitle,
     readTitle: readTitle,

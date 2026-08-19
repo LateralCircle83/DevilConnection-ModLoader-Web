@@ -223,6 +223,7 @@ node tests\tyrano-jump-guard.test.js
 node tests\tyrano-touch-guard.test.js
 node tests\tyrano-bg-guard.test.js
 node tests\tyrano-chara-guard.test.js
+node tests\devil-connection-tap-repeat.test.js
 node tests\input-advance-tool.test.js
 Get-ChildItem js -Recurse -Filter *.js | ForEach-Object { node --check $_.FullName }
 git diff --check

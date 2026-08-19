@@ -17,6 +17,7 @@
 
 ### 新增
 
+- 增加严格版本匹配的连点兼容 Profile：安卓端浏览器对间隔极短的连续点击会取消合成 click，使依赖原生 click 的连打互动丢点击。补丁精确命中两处连打场景的 `[clickable target="*da"]`——`Chapter4_2kuitomeru.ks` 的 NEO 魔力放出与 `omake_yume_kupya.ks` 的 3 秒限时连打——在该行后插入 `[iscript]`，对刚创建的按钮以 `touchend` 直触发游戏 click handler（`preventDefault` 取消浏览器延迟 click，`trigger('click')` 逐次命中），其余 clickable、mousedown 按住型和 glink/button（tap 多边形）均不受影响，也不与 Host 触屏 tap 防推进保护冲突。插入内容遵循引擎解析约束（场景解析器会把以 `;` 开头的行当注释跳过，即使位于 `[iscript]` 内），签名不符时保留原资源并产生可启动警告。
 - 增加严格版本匹配的标题循环 Profile：分别串行化视频与音频 `SourceBuffer`，每次只在 `updateend` 后按固定 deadline 安排下一段，避免定时器重入触发 `InvalidStateError`；加载失败、同名实例替换和退出会取消队列与定时器、解除监听、中止在途追加、关闭 `MediaSource` 并撤销标题 Blob URL。未知本体或模组覆盖保留原资源并产生可启动警告，不全局包装 `SourceBuffer.prototype`。
 - 新增零依赖的跨平台 `npm start` 入口，继续调用带文件白名单的 `tools/static-server.js`；无需安装 npm 包或执行构建，Windows 原有 `start_server.bat` 保持可用。
 - 将游戏菜单改为保留场景背景的响应式浮动面板：桌面双栏展示会话控制与运行日志，窄屏改为单列有界滚动；新增包含 Esc、F1–F12、QWERTY、修饰键、导航区和方向键的紧凑 TKL 虚拟键盘，按键事件在游戏 iframe realm 中生成，兼容 `key/code` 与旧式 `keyCode/which`。Ctrl、Shift、Alt 与 Meta 可锁定用于组合键，菜单关闭、窗口失焦、重载和退出时统一释放。
