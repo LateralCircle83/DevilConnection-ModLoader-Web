@@ -6,6 +6,7 @@
 
 ### 兼容性调查
 
+- 前置标题入场视频（`title_screen.ks` 的 `[movie_with_bg storage="title_intro.mp4" skip="true"]`）在严格自动播放策略环境报未处理的 `NotAllowedError`：`movie_with_bg.js` 在 `canplay` 后调用 `video.play()` 且不处理 Promise，播放发生在宿主“开始游戏”点击之后异步加载场景的时机，瞬时用户激活已过期；iOS/WebKit 上宿主桥接点击不构成 iframe 文档内手势，带声音媒体因此被拒。该错误不是解码故障（无 `MEDIA_ERR_SRC_NOT_SUPPORTED`），`playsinline` 已由游戏源码设置，与 Android fragmented-MP4 的 `DEMUXER_ERROR_DETECTED_AAC` 故障边界不同；关键差异仍是“无 iframe 文档内手势时发起带声音播放”。
 - 变身场景背景卡黑的根因是 `[bg]` 异步应用竞态：标签在 `kag.preload` 回调里写 base 层背景，多个 `time=0` 的 `[bg]` 并发时，最终背景由回调完成顺序决定而非标签顺序。Android 上 `kuro.webp` 冷 blob 加载约 170–200ms，而 `haikei2.webp` 回档后的热缓存请求仅 13–21ms；回档后中间标签（flash_off/playse/bgmovie）变快使两个 preload 重叠，haikei2 先落地、迟到的 kuro 覆盖它，表现为全屏变身视频后背景保持黑底、角色与剧情正常。桌面 blob 加载毫秒级，kuro 总是先完成所以从未触发。同一竞态覆盖全部 730 个 `time=0` 的 `[bg]`/`[bg2]`，实际可重叠的主要是“kuro → 下一个背景”的闪黑恢复 idiom（Chapter3 与 Devil_Hardester 逐字重复同一变身序列）。
 - 移动端性别选择异常的通用故障边界位于 Tyrano 的异步 `jump`：标签通过 1ms timer 延后调用 `nextOrderWithLabel()`，但在这段时间内 `is_strong_stop` 仍为 false；触屏适配把同一次物理输入通过 tap/click 路径形成连续 `nextOrder()` 时，第二次推进可先执行 jump 下方的相邻标签。最终 jump 仍会抵达目标，因此后续台词正确，但期间写入的 `f.seibetu` 会保留并使菜单图标错误。桌面鼠标通常只有一次推进，因而很难进入该窗口；关键差异是单次输入送达的推进次数，而不是设备性能。
 - 对跨文件 `jump` / `call` 的异步 `loadScenario` 窗口做静态审计与真机连点核查：`nextOrderWithLabel` / `nextOrderWithIndex` 会在加载前清 `is_strong_stop` 并隐藏事件层，但该窗口没有复现二次推进。原因分层成立：加载期间唯一的点击推进入口 `.layer_event_click` 因事件层隐藏而收不到输入；free 层 glink / button / clickable 都要求 `is_strong_stop` 为真或受 `button_clicked` 去重，而加载期 strong stop 已复位；本作不存在 fix 层跨文件 glink，无法绕过门控；标题到第一章的跨文件跳转为自动触发，触发前按钮已随 `[free layer="fix" name="title_menu"]` 移除；读档与 backlog 恢复的存档槽位于菜单层、不经过事件层冒泡，且首次点击后菜单立即隐藏并清空。结论是 jump guard 修复的 1ms 窗口是引擎内唯一同时满足“strong stop 为 false 且事件层可见”的推进间隙。
@@ -80,6 +81,7 @@
 
 ### 修复
 
+- Host Tyrano 适配新增受管电影自动播放解锁：`tyrano-video-unlock.js` 幂等包装 `[movie]`/`[movie_with_bg]` 标签（`movie_with_bg` 在开机后才注册，通过标签赋值陷阱在注册时包装），标签创建的视频按元素包装 `play()` 并吞掉拒绝；仅当 `NotAllowedError` 时立即静音重播以保留画面时序，并在 iframe 首次 pointerdown/touchend/keydown 恢复游戏原静音状态与声音，`ended`、元素移除和 `pagehide` 均清理监听。游戏显式 `mute` 的电影保持静音，正常自动播放环境零改动，不包装全局 `play()`、不改视频可见性、不触碰未受管媒体。
 - `window.api.readFileBin` 读取前先经当前会话的 `AssetResolver` 把运行期 Blob URL 还原为编码后的 ASAR 逻辑路径，再执行 VFS 查找；照相机插件从角色 `<img>.src` 反向读取立绘时不再把 Blob URL 当作归档路径，未在注册表登记的未知 Blob 仍按原样报 `ASAR file not found`。
 - Host Tyrano 适配新增背景应用顺序保护：`tyrano-bg-guard.js` 为每个 `[bg]`/`[bg2]` 请求分配单调递增序号，preload 回调落地时若已不是最新请求则丢弃，保证 base 层最终背景始终等于最后请求的存储；`[movie_with_bg]` 在视频 `play` 后 ~100ms 直写背景的迟到写入也纳入同一序号，被更新请求超越时会在 150ms 内纠正回最新背景。`wait=true` 的阻塞回调防御性放行，非背景预加载完全不受影响，不改 CSS 应用本身与 crossfade/wait 语义。适配器安装时及模组 hook 完成后的真正启动前都会确认包装。
 - Host Tyrano 适配新增角色应用顺序保护：`tyrano-chara-guard.js` 按角色名对 `[chara_show]`/`[chara_mod]` 分配独立的 show/mod 序号，preload 回调落地时同名同类型的最新请求才允许应用；show 与 mod 分开计数，较新的 mod 不会取消仍在途的 show（show 负责创建角色元素并读取最新存储），避免 Android 冷热缓存差异导致表情/姿态倒挂。当前游戏数据经审计不存在同名角色显式 `wait=false` 且无阻挡的真实重叠调用，该保护为模组场景的防御性加固。

@@ -253,6 +253,19 @@
     return installed
   }
 
+  function ensureVideoUnlock(target, kag, root, reportMissing) {
+    var installed = Boolean(
+      DCWeb.TyranoVideoUnlock &&
+      typeof DCWeb.TyranoVideoUnlock.install === 'function' &&
+      DCWeb.TyranoVideoUnlock.install(kag)
+    )
+    if (root) root.setAttribute('data-dc-video-unlock', installed ? 'installed' : 'unavailable')
+    if (!installed && reportMissing) {
+      target.console.warn('Tyrano video unlock was unavailable; movie autoplay was not protected')
+    }
+    return installed
+  }
+
   function installSmartButtonStyle(target, root) {
     var doc = target.document
     if (!doc || typeof doc.createElement !== 'function') return false
@@ -288,6 +301,7 @@
     ensureCharaGuard(target, kag, root, false)
     ensureJumpGuard(target, kag, root, false)
     ensureTouchGuard(target, root, false)
+    ensureVideoUnlock(target, kag, root, false)
 
     var originalInit = target.TYRANO.init
     var started = false
@@ -320,6 +334,7 @@
       ensureCharaGuard(target, kag, root, true)
       ensureJumpGuard(target, kag, root, true)
       ensureTouchGuard(target, root, true)
+      ensureVideoUnlock(target, kag, root, true)
       unlockAudio(target, vfs)
       try {
         target.TYRANO.kag.readyAudio()

@@ -14,6 +14,7 @@ require('../js/kernel/tyrano-jump-guard.js')
 require('../js/kernel/tyrano-touch-guard.js')
 require('../js/kernel/tyrano-bg-guard.js')
 require('../js/kernel/tyrano-chara-guard.js')
+require('../js/kernel/tyrano-video-unlock.js')
 require('../js/kernel/tyrano-adapter.js')
 
 function createDocument() {
@@ -70,10 +71,11 @@ function createMinimalTarget() {
   const bgTag = { start() {} }
   const charaShowTag = { start() {} }
   const charaModTag = { start() {} }
+  const movieTag = { start() {} }
   const kag = {
     dc: {},
     ftag: {
-      master_tag: { bg: bgTag, bg2: bgTag, image: { start() {} }, jump: { start() {} } },
+      master_tag: { bg: bgTag, bg2: bgTag, image: { start() {} }, jump: { start() {} }, movie: movieTag },
       nextOrderWithLabel() {},
     },
     init_game() {},
@@ -89,6 +91,7 @@ function createMinimalTarget() {
       chara_show: charaShowTag,
       image: { start() {} },
       jump: { start() {} },
+      movie: movieTag,
     },
     tmp: {},
   }
@@ -122,9 +125,11 @@ function testTouchGuardWiredByDefault() {
   assert.equal(root.getAttribute('data-dc-touch-guard'), 'installed')
   assert.equal(root.getAttribute('data-dc-bg-guard'), 'installed')
   assert.equal(root.getAttribute('data-dc-chara-guard'), 'installed')
+  assert.equal(root.getAttribute('data-dc-video-unlock'), 'installed')
   assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.jump.start.__dcJumpGuard), true)
   assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.bg.start.__dcBgLatestWins), true)
   assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.chara_mod.start.__dcCharaLatestWins), true)
+  assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.movie.start.__dcVideoUnlockStart), true)
   assert.equal(Boolean(target.tyrano.plugin.kag.init_game.__dcEventLayerDedupe), true)
   assert.equal(Boolean(target.jQuery.event.tap && target.jQuery.event.tap.__dcNoStopTap), true)
 }
@@ -149,6 +154,9 @@ async function main() {
   const jumpTag = {
     start() { sequence.push('jump') },
   }
+  const movieTag = {
+    start() { sequence.push('movie') },
+  }
   function makeBgTag() {
     return {
       start(pm) {
@@ -164,7 +172,7 @@ async function main() {
   const kag = {
     dc: {},
     ftag: {
-      master_tag: { bg: bgTag, bg2: bgTag, image: imageTag, jump: jumpTag },
+      master_tag: { bg: bgTag, bg2: bgTag, image: imageTag, jump: jumpTag, movie: movieTag },
       nextOrderWithLabel() {},
     },
     init_game() {},
@@ -183,6 +191,7 @@ async function main() {
       chara_show: charaShowTag,
       image: imageTag,
       jump: jumpTag,
+      movie: movieTag,
     },
     tmp: {},
   }
@@ -219,10 +228,12 @@ async function main() {
   assert.equal(document.documentElement.getAttribute('data-dc-touch-guard'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-bg-guard'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-chara-guard'), 'installed')
+  assert.equal(document.documentElement.getAttribute('data-dc-video-unlock'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-smart-buttons'), 'hidden')
   assert.equal(kag.ftag.master_tag.jump.start.__dcJumpGuard, true)
   assert.equal(kag.ftag.master_tag.bg.start.__dcBgLatestWins, true)
   assert.equal(kag.ftag.master_tag.chara_mod.start.__dcCharaLatestWins, true)
+  assert.equal(kag.ftag.master_tag.movie.start.__dcVideoUnlockStart, true)
   const smartButtonStyle = document.styles.map((style) => style.textContent).join('\n')
   assert.match(smartButtonStyle, /div:has\(\.area_save_list\) \.button_smart/)
   assert.match(smartButtonStyle, /display:\s*none\s*!important/)
@@ -278,9 +289,13 @@ async function main() {
 
   const hookJumpStart = function () { sequence.push('hook-jump') }
   kag.ftag.master_tag.jump.start = hookJumpStart
+  const hookMovieStart = function () { sequence.push('hook-movie') }
+  kag.ftag.master_tag.movie.start = hookMovieStart
   const started = target.__dcStartGame()
   assert.notEqual(kag.ftag.master_tag.jump.start, hookJumpStart)
   assert.equal(kag.ftag.master_tag.jump.start.__dcJumpGuard, true)
+  assert.notEqual(kag.ftag.master_tag.movie.start, hookMovieStart)
+  assert.equal(kag.ftag.master_tag.movie.start.__dcVideoUnlockStart, true)
   assert.deepEqual(sequence, ['audio', 'init'])
   assert.deepEqual(messages[1], { type: 'dc-player-started', launchId: 42, launchToken: 'launch-token' })
   await started
