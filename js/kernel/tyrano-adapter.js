@@ -227,6 +227,19 @@
     return installed
   }
 
+  function ensureImageMapTouch(target, kag, root, reportMissing) {
+    var installed = Boolean(
+      DCWeb.TyranoImageMapTouch &&
+      typeof DCWeb.TyranoImageMapTouch.install === 'function' &&
+      DCWeb.TyranoImageMapTouch.install(target.document, target.jQuery, kag)
+    )
+    if (root) root.setAttribute('data-dc-image-map-touch', installed ? 'installed' : 'unavailable')
+    if (!installed && reportMissing) {
+      target.console.warn('Tyrano image-map touch guard was unavailable; <area> image-map touches were not retargeted')
+    }
+    return installed
+  }
+
   function ensureBgGuard(target, kag, root, reportMissing) {
     var installed = Boolean(
       DCWeb.TyranoBgGuard &&
@@ -319,6 +332,7 @@
     ensureCharaGuard(target, kag, root, false)
     ensureJumpGuard(target, kag, root, false)
     ensureTouchGuard(target, root, false)
+    ensureImageMapTouch(target, kag, root, false)
     ensureVideoUnlock(target, kag, root, false)
     ensureAudioUnlock(target)
 
@@ -353,6 +367,7 @@
       ensureCharaGuard(target, kag, root, true)
       ensureJumpGuard(target, kag, root, true)
       ensureTouchGuard(target, root, true)
+      ensureImageMapTouch(target, kag, root, true)
       ensureVideoUnlock(target, kag, root, true)
       ensureAudioUnlock(target)
       unlockAudio(target, vfs)

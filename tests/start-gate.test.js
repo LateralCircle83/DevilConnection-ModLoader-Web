@@ -12,6 +12,7 @@ window.DCWeb.TyranoSaveAdapter = { install() {} }
 require('../js/kernel/tyrano-preload-scheduler.js')
 require('../js/kernel/tyrano-jump-guard.js')
 require('../js/kernel/tyrano-touch-guard.js')
+require('../js/kernel/tyrano-image-map-touch.js')
 require('../js/kernel/tyrano-bg-guard.js')
 require('../js/kernel/tyrano-chara-guard.js')
 require('../js/kernel/tyrano-video-unlock.js')
@@ -124,6 +125,7 @@ function testTouchGuardWiredByDefault() {
   const root = target.document.documentElement
   assert.equal(root.getAttribute('data-dc-jump-guard'), 'installed')
   assert.equal(root.getAttribute('data-dc-touch-guard'), 'installed')
+  assert.equal(root.getAttribute('data-dc-image-map-touch'), 'installed')
   assert.equal(root.getAttribute('data-dc-bg-guard'), 'installed')
   assert.equal(root.getAttribute('data-dc-chara-guard'), 'installed')
   assert.equal(root.getAttribute('data-dc-video-unlock'), 'installed')
@@ -133,6 +135,7 @@ function testTouchGuardWiredByDefault() {
   assert.equal(Boolean(target.tyrano.plugin.kag.ftag.master_tag.movie.start.__dcVideoUnlockStart), true)
   assert.equal(Boolean(target.tyrano.plugin.kag.init_game.__dcEventLayerDedupe), true)
   assert.equal(Boolean(target.jQuery.event.tap && target.jQuery.event.tap.__dcNoStopTap), true)
+  assert.ok(target.document.listeners.some((entry) => entry.type === 'touchend'), 'image-map touch listener should be installed')
 }
 
 async function main() {
@@ -227,6 +230,7 @@ async function main() {
   assert.equal(target.TYRANO.resource_concurrency, 4)
   assert.equal(document.documentElement.getAttribute('data-dc-jump-guard'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-touch-guard'), 'installed')
+  assert.equal(document.documentElement.getAttribute('data-dc-image-map-touch'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-bg-guard'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-chara-guard'), 'installed')
   assert.equal(document.documentElement.getAttribute('data-dc-video-unlock'), 'installed')
@@ -235,6 +239,7 @@ async function main() {
   assert.equal(kag.ftag.master_tag.bg.start.__dcBgLatestWins, true)
   assert.equal(kag.ftag.master_tag.chara_mod.start.__dcCharaLatestWins, true)
   assert.equal(kag.ftag.master_tag.movie.start.__dcVideoUnlockStart, true)
+  assert.ok(document.listeners.some((entry) => entry.type === 'touchend'), 'image-map touch listener should be installed')
   const smartButtonStyle = document.styles.map((style) => style.textContent).join('\n')
   assert.match(smartButtonStyle, /div:has\(\.area_save_list\) \.button_smart/)
   assert.match(smartButtonStyle, /display:\s*none\s*!important/)
@@ -292,11 +297,17 @@ async function main() {
   kag.ftag.master_tag.jump.start = hookJumpStart
   const hookMovieStart = function () { sequence.push('hook-movie') }
   kag.ftag.master_tag.movie.start = hookMovieStart
+  const touchendListenersBeforeStart = document.listeners.filter((entry) => entry.type === 'touchend').length
   const started = target.__dcStartGame()
   assert.notEqual(kag.ftag.master_tag.jump.start, hookJumpStart)
   assert.equal(kag.ftag.master_tag.jump.start.__dcJumpGuard, true)
   assert.notEqual(kag.ftag.master_tag.movie.start, hookMovieStart)
   assert.equal(kag.ftag.master_tag.movie.start.__dcVideoUnlockStart, true)
+  assert.equal(
+    document.listeners.filter((entry) => entry.type === 'touchend').length,
+    touchendListenersBeforeStart,
+    'startGame reinstall must not duplicate delegated listeners'
+  )
   assert.deepEqual(sequence, ['audio', 'init'])
   assert.deepEqual(messages[1], { type: 'dc-player-started', launchId: 42, launchToken: 'launch-token' })
   await started
