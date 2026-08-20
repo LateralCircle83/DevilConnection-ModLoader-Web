@@ -53,6 +53,7 @@
       DCWeb.DevilConnectionAudioOggPatch,
       DCWeb.DevilConnectionNeoTapPatch,
       DCWeb.DevilConnectionYumeKupyaTapPatch,
+      DCWeb.DevilConnectionTapEffectPatch,
     ],
     parseGameTitle: parseGameTitle,
     readTitle: readTitle,
