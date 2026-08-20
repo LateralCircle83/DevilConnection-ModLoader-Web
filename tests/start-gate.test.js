@@ -15,6 +15,7 @@ require('../js/kernel/tyrano-touch-guard.js')
 require('../js/kernel/tyrano-bg-guard.js')
 require('../js/kernel/tyrano-chara-guard.js')
 require('../js/kernel/tyrano-video-unlock.js')
+require('../js/kernel/tyrano-audio-unlock.js')
 require('../js/kernel/tyrano-adapter.js')
 
 function createDocument() {

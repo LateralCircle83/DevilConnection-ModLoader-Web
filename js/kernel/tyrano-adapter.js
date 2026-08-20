@@ -266,6 +266,24 @@
     return installed
   }
 
+  function ensureAudioUnlock(target) {
+    var installed = Boolean(
+      DCWeb.TyranoAudioUnlock &&
+      typeof DCWeb.TyranoAudioUnlock.install === 'function' &&
+      DCWeb.TyranoAudioUnlock.install(target)
+    )
+    if (!installed) {
+      try {
+        var kag = target.TYRANO && target.TYRANO.kag
+        if (DCWeb.TyranoAudioUnlock && typeof DCWeb.TyranoAudioUnlock.resumeAll === 'function') {
+          DCWeb.TyranoAudioUnlock.resumeAll(target)
+          installed = true
+        }
+      } catch (error) {}
+    }
+    return installed
+  }
+
   function installSmartButtonStyle(target, root) {
     var doc = target.document
     if (!doc || typeof doc.createElement !== 'function') return false
@@ -302,6 +320,7 @@
     ensureJumpGuard(target, kag, root, false)
     ensureTouchGuard(target, root, false)
     ensureVideoUnlock(target, kag, root, false)
+    ensureAudioUnlock(target)
 
     var originalInit = target.TYRANO.init
     var started = false
@@ -335,6 +354,7 @@
       ensureJumpGuard(target, kag, root, true)
       ensureTouchGuard(target, root, true)
       ensureVideoUnlock(target, kag, root, true)
+      ensureAudioUnlock(target)
       unlockAudio(target, vfs)
       try {
         target.TYRANO.kag.readyAudio()
